@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment / secrets
+.env
+.env.*
+.kaggle/
+*.pem
+*.key
+*.json
+
+# Mac
+.DS_Store
+
+# Data
+data/
+!data/.gitkeep
+
+# Logs / outputs / models
+logs/
+outputs/
+models/
+
+# Streamlit cache
+.streamlit/
+
+# Hugging Face / Torch caches
+.cache/
