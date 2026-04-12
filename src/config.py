@@ -17,6 +17,8 @@ DATA_DIR = Path(
 LOGS_DIR = PROJECT_ROOT / "logs"
 OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 MODELS_DIR = PROJECT_ROOT / "models"
+AGENT_V2_DIR = PROJECT_ROOT / "src" / "Agent_V2"
+AGENT_V2_EXPERIMENT_LOG_PATH = AGENT_V2_DIR / "experiment_log.json"
 
 # -----------------------------
 # Agent log/output filenames
