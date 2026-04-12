@@ -29,6 +29,8 @@ TARGET_F1 = 0.88
 PLATEAU_WINDOW = 5
 MIN_IMPROVEMENT = 0.002
 MAX_REPAIR_ATTEMPTS = 2
+DATA_DIR_ENV = "DISASTER_AGENT_DATA_DIR"
+DEFAULT_DATA_DIR = "data"
 
 # Fully-autonomous exploration order (includes the tuned BoW_advanced variant as a separate step).
 ARCH_SEQUENCE = ["BoW", "BoW_advanced", "BoW_advanced_thr", "CNN", "LSTM", "Transformer"]
@@ -45,9 +47,30 @@ REPAIR_SYSTEM = (
 )
 
 
+def get_data_paths() -> tuple[str, str]:
+    """Resolve train/test CSV paths from env-configured data directory, with root fallback."""
+    data_dir = os.environ.get(DATA_DIR_ENV, DEFAULT_DATA_DIR)
+    train_path = os.path.join(data_dir, "train.csv")
+    test_path = os.path.join(data_dir, "test.csv")
+
+    if os.path.exists(train_path) and os.path.exists(test_path):
+        return train_path, test_path
+
+    # Backward-compatibility for older setups that kept files at repo root.
+    if os.path.exists("train.csv") and os.path.exists("test.csv"):
+        print("[Data] WARNING: using train.csv/test.csv from repo root; prefer data/train.csv and data/test.csv")
+        return "train.csv", "test.csv"
+
+    raise FileNotFoundError(
+        "Could not find dataset files. Expected either "
+        f"'{train_path}' and '{test_path}', or repo-root train.csv/test.csv."
+    )
+
+
 def build_data_context() -> str:
-    train = pd.read_csv("train.csv")
-    test = pd.read_csv("test.csv")
+    train_path, test_path = get_data_paths()
+    train = pd.read_csv(train_path)
+    test = pd.read_csv(test_path)
     vc = train["target"].value_counts()
     total = len(train)
     return DATA_CONTEXT_TEMPLATE.format(

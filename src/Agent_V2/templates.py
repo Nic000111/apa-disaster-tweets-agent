@@ -28,8 +28,9 @@ RUNTIME FLAGS â€” always define once near the top:
   Do NOT wrap these in a dict or other structure (no `RUNTIME_FLAGS = {...}`).
 
 DATA LOADING â€” copy this pattern exactly:
-  train_df = pd.read_csv('train.csv').reset_index(drop=True)
-  test_df  = pd.read_csv('test.csv').reset_index(drop=True)
+    DATA_DIR = os.environ.get('DISASTER_AGENT_DATA_DIR', 'data')
+    train_df = pd.read_csv(os.path.join(DATA_DIR, 'train.csv')).reset_index(drop=True)
+    test_df  = pd.read_csv(os.path.join(DATA_DIR, 'test.csv')).reset_index(drop=True)
   train_df['keyword']  = train_df['keyword'].fillna('')
   train_df['location'] = train_df['location'].fillna('')
   test_df['keyword']   = test_df['keyword'].fillna('')
@@ -262,9 +263,10 @@ from sklearn.metrics import f1_score, accuracy_score
 warnings.filterwarnings("ignore")
 
 DRY_RUN = os.environ.get("AGENT_DRY_RUN") == "1"
+DATA_DIR = os.environ.get("DISASTER_AGENT_DATA_DIR", "data")
 
-train_df = pd.read_csv("train.csv")
-test_df  = pd.read_csv("test.csv")
+train_df = pd.read_csv(os.path.join(DATA_DIR, "train.csv"))
+test_df  = pd.read_csv(os.path.join(DATA_DIR, "test.csv"))
 train_df["keyword"]  = train_df["keyword"].fillna("")
 train_df["location"] = train_df["location"].fillna("")
 test_df["keyword"]   = test_df["keyword"].fillna("")
