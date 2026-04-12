@@ -520,7 +520,7 @@ def main(model: str, max_iterations: int, persist: bool = True):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fully Autonomous ML Research Agent")
-    parser.add_argument("--model", type=str, default="qwen2.5-coder:3b")
+    parser.add_argument("--model", type=str, default="gemma4:latest")
     parser.add_argument("--max-iter", type=int, default=MAX_ITERATIONS)
     parser.add_argument(
         "--fresh",

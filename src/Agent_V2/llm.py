@@ -7,10 +7,12 @@ Talks to Ollama's OpenAI-compatible endpoint at localhost:11434.
 import re
 import requests
 import json
+import os
+import time
 
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
-DEFAULT_MODEL = "gemma4:2b"   # change to any model you have pulled
-TIMEOUT = 600  # seconds to wait for LLM response
+DEFAULT_MODEL = "gemma4:latest"   # change to any model you have pulled
+TIMEOUT = int(os.environ.get("DISASTER_AGENT_LLM_TIMEOUT", "600"))  # seconds to wait for LLM response
 
 
 class OllamaClient:
@@ -47,8 +49,13 @@ class OllamaClient:
             "stream": False,
         }
         try:
+            preview = user.strip().splitlines()[0][:90] if user.strip() else "(empty prompt)"
+            started = time.perf_counter()
+            print(f"[LLM] Request started | model={self.model} | timeout={TIMEOUT}s | prompt='{preview}'")
             r = requests.post(OLLAMA_URL, json=payload, timeout=TIMEOUT)
             r.raise_for_status()
+            elapsed = time.perf_counter() - started
+            print(f"[LLM] Request completed in {elapsed:.1f}s")
             return r.json()["choices"][0]["message"]["content"]
         except requests.exceptions.Timeout:
             return "[LLM ERROR] Request timed out after {} seconds".format(TIMEOUT)

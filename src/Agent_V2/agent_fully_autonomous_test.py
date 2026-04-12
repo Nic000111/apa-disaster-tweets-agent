@@ -43,7 +43,7 @@ import experiment_transformer_5 as exp_transformer_5
 # EXPERIMENT
 # Set this to run exactly one experiment module file, for example:
 # EXPERIMENT = "experiment_lstm_4" or "experiment_lstm_4.py"
-EXPERIMENT = "experiment_lstm_4.py"
+EXPERIMENT = "experiment_bow_1"
 
 
 def _normalize_experiment_filename(value: str | None) -> str | None:
