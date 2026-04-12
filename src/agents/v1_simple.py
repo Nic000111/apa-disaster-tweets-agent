@@ -1,5 +1,6 @@
 import json
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,9 @@ import tensorflow as tf
 from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
 
+if __name__ == "__main__" and __package__ is None:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from config import (
     DATA_DIR,
     LOGS_DIR,
@@ -17,12 +21,14 @@ from config import (
     OLLAMA_MODEL,
     OLLAMA_URL,
     RANDOM_STATE,
-    MAX_SIMPLE_EXPERIMENTS,
+    MAX_V1_EXPERIMENTS,
+    V1_SIMPLE_LOG_PATH,
+    V1_SIMPLE_BEST_PATH,
 )
 
 TRAIN_PATH = DATA_DIR / "train.csv"
-LOG_PATH = LOGS_DIR / "experiments.jsonl"
-BEST_RESULT_PATH = OUTPUTS_DIR / "best_result.json"
+LOG_PATH = V1_SIMPLE_LOG_PATH
+BEST_RESULT_PATH = V1_SIMPLE_BEST_PATH
 
 ALLOWED_MODEL_TYPES = ["avg_embed", "lstm"]
 ALLOWED_VOCAB_SIZES = [5000, 10000]
@@ -307,7 +313,7 @@ def main():
     history = load_experiment_history()
     print(f"Loaded {len(history)} previous experiments.")
 
-    for i in range(len(history) + 1, MAX_SIMPLE_EXPERIMENTS + 1):
+    for i in range(len(history) + 1, MAX_V1_EXPERIMENTS + 1):
         print(f"\n=== Experiment {i} ===")
 
         try:
@@ -336,7 +342,7 @@ def main():
     valid_results = [h for h in history if "val_f1" in h]
     if valid_results:
         save_best_result(valid_results)
-        print("\nBest result saved to outputs/best_result.json")
+        print(f"\nBest result saved to {BEST_RESULT_PATH}")
     else:
         print("\nNo valid completed experiments found.")
 

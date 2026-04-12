@@ -4,10 +4,12 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from config import LOGS_DIR
-
-SIMPLE_LOG = LOGS_DIR / "experiments.jsonl"
-ADVANCED_LOG = LOGS_DIR / "advanced_experiments.jsonl"
+from config import (
+    V1_SIMPLE_LOG_PATH,
+    V2_TRANSFORMER_LOG_PATH,
+    LEGACY_SIMPLE_LOG_PATH,
+    LEGACY_ADVANCED_LOG_PATH,
+)
 
 
 def load_jsonl(path):
@@ -26,12 +28,13 @@ def load_jsonl(path):
     return rows
 
 
-def prepare_simple_df(rows):
+def prepare_simple_df(rows, *, agent_version: str, log_source: str):
     if not rows:
         return pd.DataFrame()
 
     df = pd.DataFrame(rows)
-    df["agent_version"] = "simple"
+    df["agent_version"] = agent_version
+    df["log_source"] = log_source
 
     if "val_f1" in df.columns:
         df["score"] = df["val_f1"]
@@ -45,12 +48,13 @@ def prepare_simple_df(rows):
     return df
 
 
-def prepare_advanced_df(rows):
+def prepare_advanced_df(rows, *, agent_version: str, log_source: str):
     if not rows:
         return pd.DataFrame()
 
     df = pd.DataFrame(rows)
-    df["agent_version"] = "advanced"
+    df["agent_version"] = agent_version
+    df["log_source"] = log_source
 
     if "val_f1_best_threshold" in df.columns:
         df["score"] = df["val_f1_best_threshold"]
@@ -71,6 +75,7 @@ def safe_concat(dfs):
 def make_display_df(df):
     display_cols = [
         "agent_version",
+        "log_source",
         "experiment_number",
         "name",
         "model_type",
@@ -102,12 +107,29 @@ def make_display_df(df):
     return out
 
 
-simple_rows = load_jsonl(SIMPLE_LOG)
-advanced_rows = load_jsonl(ADVANCED_LOG)
+v1_df = prepare_simple_df(
+    load_jsonl(V1_SIMPLE_LOG_PATH),
+    agent_version="v1_simple",
+    log_source="v1",
+)
+v1_legacy_df = prepare_simple_df(
+    load_jsonl(LEGACY_SIMPLE_LOG_PATH),
+    agent_version="v1_simple",
+    log_source="legacy",
+)
 
-simple_df = prepare_simple_df(simple_rows)
-advanced_df = prepare_advanced_df(advanced_rows)
-all_df = safe_concat([simple_df, advanced_df])
+v2_df = prepare_advanced_df(
+    load_jsonl(V2_TRANSFORMER_LOG_PATH),
+    agent_version="v2_transformer",
+    log_source="v2",
+)
+v2_legacy_df = prepare_advanced_df(
+    load_jsonl(LEGACY_ADVANCED_LOG_PATH),
+    agent_version="v2_transformer",
+    log_source="legacy",
+)
+
+all_df = safe_concat([v1_df, v1_legacy_df, v2_df, v2_legacy_df])
 
 st.set_page_config(page_title="Disaster Tweets Agent Dashboard", layout="wide")
 st.title("Disaster Tweets Agent Dashboard")

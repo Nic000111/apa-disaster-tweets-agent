@@ -1,4 +1,6 @@
 import json
+import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -17,6 +19,9 @@ from transformers import (
     set_seed,
 )
 
+if __name__ == "__main__" and __package__ is None:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from config import (
     DATA_DIR,
     LOGS_DIR,
@@ -24,12 +29,14 @@ from config import (
     MODELS_DIR,
     HF_DEFAULT_MODEL,
     RANDOM_STATE,
-    MAX_ADVANCED_EXPERIMENTS,
+    MAX_V2_EXPERIMENTS,
+    V2_TRANSFORMER_LOG_PATH,
+    V2_TRANSFORMER_BEST_PATH,
 )
 
 TRAIN_PATH = DATA_DIR / "train.csv"
-LOG_PATH = LOGS_DIR / "advanced_experiments.jsonl"
-BEST_RESULT_PATH = OUTPUTS_DIR / "advanced_best_result.json"
+LOG_PATH = V2_TRANSFORMER_LOG_PATH
+BEST_RESULT_PATH = V2_TRANSFORMER_BEST_PATH
 
 SEED = RANDOM_STATE
 DEVICE = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
@@ -283,8 +290,8 @@ def main():
 
     completed = []
 
-    for i, exp in enumerate(EXPERIMENTS[:MAX_ADVANCED_EXPERIMENTS], start=1):
-        print(f"\n=== Experiment {i}/{MAX_ADVANCED_EXPERIMENTS} ===")
+    for i, exp in enumerate(EXPERIMENTS[:MAX_V2_EXPERIMENTS], start=1):
+        print(f"\n=== Experiment {i}/{MAX_V2_EXPERIMENTS} ===")
         print(json.dumps(exp, indent=2))
 
         try:

@@ -1,0 +1,40 @@
+# setup_instructions.txt
+
+Before running the project, please ensure you have installed all required dependencies and set up your environment as follows:
+
+1. **Python Version**
+   - Use Python 3.10+ (recommended: Python 3.11).
+   - Note: `tensorflow` and `torch` have platform-specific wheels; if `pip install -r requirements.txt` fails, upgrade pip and try again.
+
+2. **Install Required Packages**
+   - Run the following command in your terminal:
+     
+     pip install -r requirements.txt
+
+3. **(Optional) Create a Virtual Environment**
+   - It is recommended to use a virtual environment:
+     
+     python -m venv .venv
+     
+     # Activate on Windows:
+     .venv\Scripts\activate
+     
+     # Activate on macOS/Linux:
+     source .venv/bin/activate
+
+4. **Other Setup Steps**
+   - Ensure you have access to any required API keys or environment variables (see README.md for details).
+   - Create the following directories if they do not exist:
+     - logs/
+     - models/
+     - outputs/
+   - Make sure your Kaggle dataset exists under `data/` (see README.md).
+
+5. **Run the Application**
+   - Run an agent:
+     - `python src/agent_vs.py v1` (simple TensorFlow agent)
+     - `python src/agent_vs.py v2` (transformer agent)
+   - Run the dashboard:
+     - `streamlit run src/dashboard.py`
+
+Refer to README.md for more details or troubleshooting steps.

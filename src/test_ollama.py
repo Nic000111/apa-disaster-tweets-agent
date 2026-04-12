@@ -1,14 +1,14 @@
 import requests
 
-url = "http://localhost:11434/api/generate"
+from config import OLLAMA_MODEL, OLLAMA_URL
 
 data = {
-    "model": "gemma4:e4b",
+    "model": OLLAMA_MODEL,
     "prompt": "Say only: connection works",
     "stream": False
 }
 
-response = requests.post(url, json=data, timeout=120)
+response = requests.post(OLLAMA_URL, json=data, timeout=120)
 response.raise_for_status()
 
 print(response.json()["response"])
