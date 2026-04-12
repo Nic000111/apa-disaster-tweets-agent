@@ -40,6 +40,23 @@ import experiment_transformer_4 as exp_transformer_4
 import experiment_transformer_5 as exp_transformer_5
 
 
+# EXPERIMENT
+# Set this to run exactly one experiment module file, for example:
+# EXPERIMENT = "experiment_lstm_4" or "experiment_lstm_4.py"
+EXPERIMENT = "experiment_lstm_4.py"
+
+
+def _normalize_experiment_filename(value: str | None) -> str | None:
+    if not value:
+        return None
+    name = os.path.basename(value.strip())
+    if not name:
+        return None
+    if not name.endswith(".py"):
+        name += ".py"
+    return name.lower()
+
+
 # Architecture-specific hook modules.
 EXPERIMENT_HOOKS = {
     "BoW": [exp_bow_1],
@@ -50,7 +67,93 @@ EXPERIMENT_HOOKS = {
     "Transformer": [exp_transformer_2, exp_transformer_3, exp_transformer_4, exp_transformer_5, exp_transformer_1],
 }
 
-# ── Configuration ─────────────────────────────────────────────────────────────
+# Selectable test slots: only edit names here.
+TEST_EXPERIMENT_NAMES = [
+    "BoW_1", "BoW_2", "BoW_3",
+    "CNN_1", "CNN_2", "CNN_3", "CNN_4", "CNN_5",
+    "LSTM_1", "LSTM_2", "LSTM_3", "LSTM_4", "LSTM_5",
+    "Transformer_1", "Transformer_2", "Transformer_3", "Transformer_4", "Transformer_5",
+]
+
+
+def _build_test_experiments(names: list[str]) -> dict[str, tuple[str, list[object]]]:
+    module_lookup = {
+        "BoW": {1: exp_bow_1, 2: exp_bow_2, 3: exp_bow_3},
+        "CNN": {1: exp_cnn_1, 2: exp_cnn_2, 3: exp_cnn_3, 4: exp_cnn_4, 5: exp_cnn_5},
+        "LSTM": {1: exp_lstm_1, 2: exp_lstm_2, 3: exp_lstm_3, 4: exp_lstm_4, 5: exp_lstm_5},
+        "Transformer": {
+            1: exp_transformer_1,
+            2: exp_transformer_2,
+            3: exp_transformer_3,
+            4: exp_transformer_4,
+            5: exp_transformer_5,
+        },
+    }
+
+    arch_override = {
+        "BoW_1": "BoW",
+        "BoW_2": "BoW_advanced",
+        "BoW_3": "BoW_advanced_thr",
+    }
+
+    built: dict[str, tuple[str, list[object]]] = {}
+    for name in names:
+        base, _, idx_str = name.partition("_")
+        if not idx_str.isdigit():
+            raise ValueError(f"Invalid test experiment name: {name}. Expected format like CNN_3")
+
+        idx = int(idx_str)
+        if base not in module_lookup or idx not in module_lookup[base]:
+            raise ValueError(f"No module found for test experiment: {name}")
+
+        arch = arch_override.get(name, base)
+        if name == "BoW_3":
+            built[name] = (arch, [exp_bow_2, exp_bow_3])
+        else:
+            built[name] = (arch, [module_lookup[base][idx]])
+
+    return built
+
+
+TEST_EXPERIMENTS = _build_test_experiments(TEST_EXPERIMENT_NAMES)
+
+EXPERIMENT_FILE_TO_MODULE = {
+    "experiment_bow_1.py": exp_bow_1,
+    "experiment_bow_2.py": exp_bow_2,
+    "experiment_bow_3.py": exp_bow_3,
+    "experiment_cnn_1.py": exp_cnn_1,
+    "experiment_cnn_2.py": exp_cnn_2,
+    "experiment_cnn_3.py": exp_cnn_3,
+    "experiment_cnn_4.py": exp_cnn_4,
+    "experiment_cnn_5.py": exp_cnn_5,
+    "experiment_lstm_1.py": exp_lstm_1,
+    "experiment_lstm_2.py": exp_lstm_2,
+    "experiment_lstm_3.py": exp_lstm_3,
+    "experiment_lstm_4.py": exp_lstm_4,
+    "experiment_lstm_5.py": exp_lstm_5,
+    "experiment_transformer_1.py": exp_transformer_1,
+    "experiment_transformer_2.py": exp_transformer_2,
+    "experiment_transformer_3.py": exp_transformer_3,
+    "experiment_transformer_4.py": exp_transformer_4,
+    "experiment_transformer_5.py": exp_transformer_5,
+}
+
+
+def _arch_from_experiment_file(experiment_file: str) -> str:
+    file_name = os.path.basename(experiment_file).lower()
+    if "transformer" in file_name:
+        return "Transformer"
+    if "lstm" in file_name:
+        return "LSTM"
+    if "cnn" in file_name:
+        return "CNN"
+    if file_name == "experiment_bow_2.py":
+        return "BoW_advanced"
+    if file_name == "experiment_bow_3.py":
+        return "BoW_advanced_thr"
+    return "BoW"
+
+
 MAX_ITERATIONS = 2
 TARGET_F1 = 0.88
 PLATEAU_WINDOW = 5
@@ -58,6 +161,7 @@ MIN_IMPROVEMENT = 0.002
 MAX_REPAIR_ATTEMPTS = 2
 DATA_DIR_ENV = "DISASTER_AGENT_DATA_DIR"
 DEFAULT_DATA_DIR = "data"
+GENERATED_CODE_DIR = "generated_code"
 
 # Fully-autonomous exploration order (includes the tuned BoW_advanced variant as a separate step).
 ARCH_SEQUENCE = ["BoW", "BoW_advanced", "BoW_advanced_thr", "CNN", "LSTM", "Transformer"]
@@ -110,6 +214,16 @@ def build_data_context() -> str:
         missing_kw=100 * train["keyword"].isna().mean(),
         missing_loc=100 * train["location"].isna().mean(),
     )
+
+
+def write_generated_code(name: str, code: str, stage: str = "latest") -> str:
+    """Persist generated script code to a Python file for inspection/debugging."""
+    os.makedirs(GENERATED_CODE_DIR, exist_ok=True)
+    file_name = f"{name}_{stage}.py"
+    file_path = os.path.join(GENERATED_CODE_DIR, file_name)
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(code)
+    return file_path
 
 
 def infer_architecture(text: str) -> str:
@@ -166,23 +280,32 @@ def _primary_experiment_module(arch: str):
 
 
 def _arch_prompt_for_arch(arch: str) -> str:
-    module = _primary_experiment_module(arch)
-    if module and hasattr(module, "get_arch_prompt"):
-        return module.get_arch_prompt()
+    modules = EXPERIMENT_HOOKS.get(arch, [])
+    for module in reversed(modules):
+        if hasattr(module, "get_arch_prompt"):
+            prompt = module.get_arch_prompt()
+            if prompt:
+                return prompt
     return "Propose an improved version of the best model so far."
 
 
 def _model_prompt_for_arch(arch: str) -> str:
-    module = _primary_experiment_module(arch)
-    if module and hasattr(module, "get_model_prompt"):
-        return module.get_model_prompt()
+    modules = EXPERIMENT_HOOKS.get(arch, [])
+    for module in reversed(modules):
+        if hasattr(module, "get_model_prompt"):
+            prompt = module.get_model_prompt()
+            if prompt:
+                return prompt
     return ""
 
 
 def _template_for_arch(arch: str) -> str | None:
-    module = _primary_experiment_module(arch)
-    if module and hasattr(module, "get_template"):
-        return module.get_template(ARCH_TEMPLATES)
+    modules = EXPERIMENT_HOOKS.get(arch, [])
+    for module in reversed(modules):
+        if hasattr(module, "get_template"):
+            template = module.get_template(ARCH_TEMPLATES)
+            if template:
+                return template
     return None
 
 
@@ -251,7 +374,14 @@ def request_repair(
     return fixed_code
 
 
-def main(model: str, max_iterations: int, persist: bool = True):
+def main(
+    model: str,
+    max_iterations: int,
+    persist: bool = True,
+    selected_experiment: str | None = None,
+    selected_test_experiment: str | None = None,
+    selected_experiment_file: str | None = None,
+):
     print("\n" + "=" * 60)
     print("  FULLY AUTONOMOUS ML RESEARCH AGENT - Disaster Tweets")
     print("=" * 60)
@@ -261,12 +391,21 @@ def main(model: str, max_iterations: int, persist: bool = True):
     memory = ExperimentMemory(persist=persist)
     llm = OllamaClient(model=model)
 
-    print(f"\n[Agent] Starting loop. Max iterations: {max_iterations}")
-    print(f"[Agent] Target F1: {TARGET_F1}  |  Plateau window: {PLATEAU_WINDOW}\n")
+    effective_experiment_file = _normalize_experiment_filename(selected_experiment_file) or _normalize_experiment_filename(EXPERIMENT)
 
-    for iteration in range(1, max_iterations + 1):
+    run_iterations = 1 if (selected_experiment or selected_test_experiment or effective_experiment_file) else max_iterations
+    print(f"\n[Agent] Starting loop. Max iterations: {run_iterations}")
+    print(f"[Agent] Target F1: {TARGET_F1}  |  Plateau window: {PLATEAU_WINDOW}\n")
+    if selected_experiment:
+        print(f"[Agent] Single experiment mode enabled: {selected_experiment}")
+    if selected_test_experiment:
+        print(f"[Agent] Single test slot mode enabled: {selected_test_experiment}")
+    if effective_experiment_file:
+        print(f"[Agent] Single experiment file mode enabled: {effective_experiment_file}")
+
+    for iteration in range(1, run_iterations + 1):
         print(f"\n{'-'*60}")
-        print(f"  ITERATION {iteration}/{max_iterations}")
+        print(f"  ITERATION {iteration}/{run_iterations}")
         print(f"{'-'*60}")
 
         tried = memory.get_tried_architectures()
@@ -278,11 +417,35 @@ def main(model: str, max_iterations: int, persist: bool = True):
         print(f"[Agent] Tried: {tried or 'none'}  |  Still needed (sequence): {not_yet or 'all covered'}")
         print(f"[Agent] Best F1: {best_f1:.5f}" if best_f1 else "[Agent] No successful runs yet")
 
-        next_arch = not_yet[0] if not_yet else "BoW_advanced_thr"
+        if effective_experiment_file:
+            if effective_experiment_file not in EXPERIMENT_FILE_TO_MODULE:
+                raise ValueError(
+                    "Unknown experiment file: "
+                    f"{effective_experiment_file}. Use one of: {', '.join(sorted(EXPERIMENT_FILE_TO_MODULE.keys()))}"
+                )
+            next_arch = _arch_from_experiment_file(effective_experiment_file)
+            EXPERIMENT_HOOKS[next_arch] = [EXPERIMENT_FILE_TO_MODULE[effective_experiment_file]]
+        elif selected_test_experiment:
+            next_arch, selected_modules = TEST_EXPERIMENTS[selected_test_experiment]
+            EXPERIMENT_HOOKS[next_arch] = selected_modules
+        else:
+            next_arch = selected_experiment if selected_experiment else (not_yet[0] if not_yet else "BoW_advanced_thr")
         name = (
-            f"iter{iteration:02d}_bowadvanced2"
-            if next_arch == "BoW_advanced_thr"
-            else f"iter{iteration:02d}_{next_arch.lower().replace('_', '')}"
+            f"manual_{os.path.splitext(os.path.basename(effective_experiment_file))[0].lower()}"
+            if effective_experiment_file
+            else (
+                f"manual_{selected_test_experiment.lower()}"
+                if selected_test_experiment
+                else (
+                    f"manual_{next_arch.lower().replace('_', '')}"
+                    if selected_experiment
+                    else (
+                        f"iter{iteration:02d}_bowadvanced2"
+                        if next_arch == "BoW_advanced_thr"
+                        else f"iter{iteration:02d}_{next_arch.lower().replace('_', '')}"
+                    )
+                )
+            )
         )
 
         template = _template_for_arch(next_arch)
@@ -355,6 +518,9 @@ def main(model: str, max_iterations: int, persist: bool = True):
             )
             continue
 
+        initial_code_path = write_generated_code(name, code, stage="initial")
+        print(f"[THINK] Generated code saved: {initial_code_path}")
+
         arch = next_arch if template else infer_architecture(response + next_arch)
         print(f"[THINK] Architecture: {arch}  |  Name: {name}")
 
@@ -395,6 +561,8 @@ def main(model: str, max_iterations: int, persist: bool = True):
                     }
                     break
                 run_code = fixed
+                repaired_path = write_generated_code(name, run_code, stage=f"repair_{attempt + 1}")
+                print(f"[REPAIR] Updated code saved: {repaired_path}")
                 repaired = True
                 attempt += 1
                 continue
@@ -430,6 +598,8 @@ def main(model: str, max_iterations: int, persist: bool = True):
                     }
                     break
                 run_code = fixed
+                repaired_path = write_generated_code(name, run_code, stage=f"repair_{attempt + 1}")
+                print(f"[REPAIR] Updated code saved: {repaired_path}")
                 repaired = True
                 attempt += 1
                 continue
@@ -457,10 +627,14 @@ def main(model: str, max_iterations: int, persist: bool = True):
             if not fixed:
                 break
             run_code = fixed
+            repaired_path = write_generated_code(name, run_code, stage=f"repair_{attempt + 1}")
+            print(f"[REPAIR] Updated code saved: {repaired_path}")
             repaired = True
             attempt += 1
 
         code = run_code
+        final_code_path = write_generated_code(name, code, stage="final")
+        print(f"[Agent] Final code saved: {final_code_path}")
 
         if not result:
             result = {
@@ -523,6 +697,23 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="qwen2.5-coder:3b")
     parser.add_argument("--max-iter", type=int, default=MAX_ITERATIONS)
     parser.add_argument(
+        "--experiment",
+        type=str,
+        choices=ARCH_SEQUENCE,
+        help="Run only one selected experiment architecture.",
+    )
+    parser.add_argument(
+        "--test-experiment",
+        type=str,
+        choices=sorted(TEST_EXPERIMENTS.keys()),
+        help="Run only one selected test slot (e.g., BoW_1, CNN_3, LSTM_5).",
+    )
+    parser.add_argument(
+        "--experiment-file",
+        type=str,
+        help="Run only one specific experiment module file (e.g., experiment_cnn_1.py). If omitted, uses EXPERIMENT constant when set.",
+    )
+    parser.add_argument(
         "--fresh",
         action="store_true",
         help="Ignore and do not write experiment_log.json (start sequence from scratch).",
@@ -530,4 +721,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.fresh:
         print("\n[Agent] Running in --fresh mode (no experiment_log.json read/write).")
-    main(model=args.model, max_iterations=args.max_iter, persist=not args.fresh)
+    configured_experiment_file = _normalize_experiment_filename(EXPERIMENT)
+    selected_modes = [bool(args.experiment), bool(args.test_experiment), bool(args.experiment_file or configured_experiment_file)]
+    if sum(selected_modes) > 1:
+        parser.error("Use only one of --experiment, --test-experiment, or --experiment-file.")
+    main(
+        model=args.model,
+        max_iterations=args.max_iter,
+        persist=not args.fresh,
+        selected_experiment=args.experiment,
+        selected_test_experiment=args.test_experiment,
+        selected_experiment_file=args.experiment_file or configured_experiment_file,
+    )
