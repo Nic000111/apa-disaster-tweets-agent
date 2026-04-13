@@ -21,6 +21,7 @@ sentencepiece>=0.1.99
 streamlit>=1.34
 plotly>=5.20
 kaggle>=1.6
+flask>=3.0
 
 # Legacy V1 agent only (not required for Agent_V2 fully autonomous)
 # TensorFlow currently has no official wheels for Python 3.14 on Windows.

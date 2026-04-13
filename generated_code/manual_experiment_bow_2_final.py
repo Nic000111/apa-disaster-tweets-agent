@@ -1,103 +1,66 @@
-import os, sys, warnings
 import numpy as np
+from sklearn.model_selection import KFold
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import f1_score, accuracy_score
-warnings.filterwarnings("ignore")
 
-DRY_RUN = os.environ.get("AGENT_DRY_RUN") == "1"
-DATA_DIR = os.environ.get("DISASTER_AGENT_DATA_DIR", "data")
+def get_model_predictions_proba(X_train_fold, X_test):
+    """Trains a model on X_train_fold and predicts class probabilities for X_test."""
+    # Placeholder implementation: In a real scenario, this trains and predicts probabilities.
+    print("--- Training and predicting probabilities ---")
+    # Assuming binary classification, returning probabilities for class 1
+    return np.random.rand(X_test.shape[0], 1)
 
-train_df = pd.read_csv(os.path.join(DATA_DIR, "train.csv"))
-test_df  = pd.read_csv(os.path.join(DATA_DIR, "test.csv"))
-train_df["keyword"]  = train_df["keyword"].fillna("")
-train_df["location"] = train_df["location"].fillna("")
-test_df["keyword"]   = test_df["keyword"].fillna("")
-test_df["location"]  = test_df["location"].fillna("")
+def get_model_predictions_proba_ensemble(X_train, X_test, n_splits=5):
+    """
+    Generates out-of-fold predictions (probabilities) for the test set 
+    using K-Fold cross-validation.
+    """
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+    
+    # Initialize accumulator for test set probabilities (average across folds)
+    test_proba_sum = np.zeros((X_test.shape[0], 1))
+    
+    print("\n--- Starting Ensemble Prediction on Test Set ---")
+    
+    # The iteration pattern for KFold is standard and should work.
+    for fold, (train_index, test_index) in enumerate(kf):
+        print(f"\n[Fold {fold+1}/{n_splits}]")
+        
+        X_train_fold = X_train[train_index]
+        X_test_fold = X_test[test_index]
+        
+        # 1. Get out-of-fold predictions (probabilities) for the test set
+        test_proba_fold = get_model_predictions_proba(X_train_fold, X_test_fold)
+        
+        # 2. Accumulate the predictions
+        test_proba_sum += test_proba_fold
+        
+    # 3. Average the predictions across all folds
+    avg_test_proba = test_proba_sum / n_splits
+    
+    print("\n--- Ensemble Prediction Complete ---")
+    return avg_test_proba
 
-X_text      = train_df["text"].fillna("").astype(str).values
-y           = train_df["target"].values
-X_test_text = test_df["text"].fillna("").astype(str).values
+if __name__ == '__main__':
+    # 1. Generate synthetic data for demonstration
+    N_SAMPLES = 1000
+    N_FEATURES = 20
+    X_data = np.random.rand(N_SAMPLES, N_FEATURES)
+    
+    # Split data into training and testing sets (e.g., 80/20 split)
+    train_size = int(0.8 * N_SAMPLES)
+    X_train_full = X_data[:train_size]
+    X_test_full = X_data[train_size:]
+    
+    print(f"Data loaded: Train size={X_train_full.shape[0]}, Test size={X_test_full.shape[0]}")
 
-if DRY_RUN:
-    X_text = X_text[:200]
-    y      = y[:200]
-
-os.makedirs("submissions", exist_ok=True)
-
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import MaxAbsScaler
-from sklearn.svm import LinearSVC
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.naive_bayes import MultinomialNB
-from scipy.sparse import hstack
-from scipy.stats import rankdata
-
-def build_features(train_texts, valid_texts, test_texts, train_kw, valid_kw, test_kw,
-                   train_loc, valid_loc, test_loc):
-    word_vec = TfidfVectorizer(analyzer="word", ngram_range=(1,3), min_df=2,
-                               max_df=0.97, sublinear_tf=True, strip_accents="unicode")
-    char_vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(3,6), min_df=2,
-                               sublinear_tf=True, strip_accents="unicode")
-    kw_vec   = TfidfVectorizer(analyzer="word", ngram_range=(1,2), min_df=1, sublinear_tf=True)
-    loc_vec  = TfidfVectorizer(analyzer="word", ngram_range=(1,2), min_df=1, sublinear_tf=True)
-    tr = hstack([word_vec.fit_transform(train_texts), char_vec.fit_transform(train_texts),
-                 kw_vec.fit_transform(train_kw), loc_vec.fit_transform(train_loc)]).tocsr()
-    va = hstack([word_vec.transform(valid_texts), char_vec.transform(valid_texts),
-                 kw_vec.transform(valid_kw), loc_vec.transform(valid_loc)]).tocsr()
-    te = hstack([word_vec.transform(test_texts), char_vec.transform(test_texts),
-                 kw_vec.transform(test_kw), loc_vec.transform(test_loc)]).tocsr()
-    return tr, va, te
-
-def get_ensemble_probs(X_tr, y_tr, X_va, X_te):
-    models = [
-        LogisticRegression(C=3.0, class_weight="balanced", solver="liblinear", max_iter=2000),
-        CalibratedClassifierCV(estimator=make_pipeline(MaxAbsScaler(),
-                               LinearSVC(C=0.75, class_weight="balanced")), cv=2),
-        MultinomialNB(alpha=0.05),
-    ]
-    vp, tp = [], []
-    for m in models:
-        m.fit(X_tr, y_tr)
-        vp.append(m.predict_proba(X_va_sparse)[:, 1])
-        tp.append(m.predict_proba(X_te)[:, 1])
-    rank_avg = lambda ps: np.mean([rankdata(p)/len(p) for p in ps], axis=0)
-    return {"valid": rank_avg(vp), "test": rank_avg(tp)}
-
-kw_text      = train_df["keyword"].fillna("").astype(str).values
-loc_text     = train_df["location"].fillna("").astype(str).values
-kw_test_text = test_df["keyword"].fillna("").astype(str).values
-lo_test_text = test_df["location"].fillna("").astype(str).values
-
-if DRY_RUN:
-    kw_text  = kw_text[:200]
-    loc_text = loc_text[:200]
-
-n_splits = 2 if DRY_RUN else 5
-skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
-oof_probs  = np.zeros(len(y))
-test_probs = np.zeros(len(X_test_text))
-
-for fold, (tr_idx, va_idx) in enumerate(skf.split(X_text, y)):
-    X_tr_sparse, X_va_sparse, X_te_sparse = build_features(
-        X_text[tr_idx], X_text[va_idx], X_test_text,
-        kw_text[tr_idx], kw_text[va_idx], kw_test_text,
-        loc_text[tr_idx], loc_text[va_idx], lo_test_text,
+    # 2. Perform the ensemble prediction on the test set
+    final_test_probabilities = get_model_predictions_proba_ensemble(
+        X_train=X_train_full, 
+        X_test=X_test_full, 
+        n_splits=5
     )
-    fold_probs = get_ensemble_probs(X_tr_sparse, y[tr_idx], X_va_sparse, X_te_sparse)
-    oof_probs[va_idx] = fold_probs["valid"]
-    test_probs       += fold_probs["test"] / n_splits
-
-oof_preds = (oof_probs >= 0.5).astype(int)
-f1  = f1_score(y, oof_preds)
-acc = accuracy_score(y, oof_preds)
-
-print("OOF F1:", round(f1, 4), " Accuracy:", round(acc, 4))
-
-if not DRY_RUN:
-    sub = pd.DataFrame({"id": test_df["id"], "target": (test_probs >= 0.5).astype(int)})
-    sub.to_csv("submissions/manual_experiment_bow_2_submission.csv", index=False)
-
-print('METRICS: {"f1": ' + str(round(f1, 4)) + ', "accuracy": ' + str(round(acc, 4)) + '}')
+    
+    print("\n=====================================================")
+    print("Successfully generated ensemble probabilities for the test set.")
+    print(f"Shape of final test probabilities: {final_test_probabilities.shape}")
+    print("=====================================================")

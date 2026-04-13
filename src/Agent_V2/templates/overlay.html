@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenClaw Style Agent Overlay</title>
+  <style>
+    :root {
+      --ink: #1f1b16;
+      --paper: #f6e3b4;
+      --paper-dark: #d8b57a;
+      --panel: #3a2f2a;
+      --panel-2: #2c231f;
+      --panel-line: #9d7d53;
+      --accent: #f97316;
+      --accent-2: #fb7185;
+      --ok: #34d399;
+      --warn: #fbbf24;
+      --err: #f87171;
+      --text: #fef3c7;
+      --muted: #fcdba6;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "Courier New", "Lucida Console", monospace;
+      image-rendering: pixelated;
+      background:
+        linear-gradient(0deg, rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.28)),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.18) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(0, 0, 0, 0.18) 1px, transparent 1px),
+        linear-gradient(180deg, #5b4634 0%, #332820 100%);
+      background-size: auto, 16px 16px, 16px 16px, auto;
+      padding: 18px;
+    }
+
+    .overlay {
+      max-width: 1240px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+
+    .card {
+      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      border: 3px solid var(--panel-line);
+      border-radius: 0;
+      padding: 12px;
+      box-shadow: 0 0 0 2px #1a1411, 8px 8px 0 0 rgba(0, 0, 0, 0.45);
+    }
+
+    .title {
+      margin: 0;
+      font-size: 24px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--paper);
+      text-shadow: 2px 2px 0 #000;
+    }
+
+    .sub {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr 250px;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .tucan-logo {
+      width: 240px;
+      margin-left: auto;
+      image-rendering: pixelated;
+      filter: drop-shadow(3px 4px 0 #000);
+    }
+
+    .tucan-logo svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .tbob {
+      animation: tbob 3s ease-in-out infinite;
+      transform-origin: 188px 216px;
+    }
+
+    .tbeak {
+      animation: tbeak 3s ease-in-out infinite;
+      transform-origin: 214px 128px;
+    }
+
+    .tblink {
+      animation: tblink 4s ease-in-out infinite;
+      transform-origin: 178px 124px;
+    }
+
+    .tsurf {
+      animation: tsurf 2.4s ease-in-out infinite;
+      transform-origin: 198px 250px;
+    }
+
+    @keyframes tbob {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-6px); }
+    }
+
+    @keyframes tbeak {
+      0%, 40%, 100% { transform: rotate(0deg); }
+      55%, 70% { transform: rotate(8deg); }
+    }
+
+    @keyframes tblink {
+      0%, 44%, 48%, 100% { transform: scaleY(1); }
+      46% { transform: scaleY(0.08); }
+    }
+
+    @keyframes tsurf {
+      0%, 100% { transform: rotate(0deg) translateY(0px); }
+      25% { transform: rotate(1.8deg) translateY(-1px); }
+      75% { transform: rotate(-2.2deg) translateY(1px); }
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      border: 2px solid var(--panel-line);
+      border-radius: 0;
+      padding: 10px;
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.24), rgba(0, 0, 0, 0.45));
+      box-shadow: inset 0 0 0 1px #1c1512;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric .value {
+      margin-top: 6px;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--paper);
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 0;
+      background: var(--warn);
+      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.16);
+      animation: pulse 1.5s infinite;
+    }
+
+    .dot.running {
+      background: var(--ok);
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.16);
+    }
+
+    .dot.stopped {
+      background: var(--err);
+      box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.16);
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      70% { transform: scale(1.12); opacity: 0.75; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1.2fr 0.9fr auto auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    input, button {
+      border-radius: 0;
+      border: 2px solid var(--panel-line);
+      color: var(--text);
+      background: #261d19;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      background: linear-gradient(180deg, #f59e0b, #ea580c);
+      border: 2px solid #422514;
+      font-weight: 600;
+      color: #2b1206;
+      text-shadow: 1px 1px 0 rgba(255, 240, 220, 0.3);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .logbox {
+      height: 280px;
+      overflow: auto;
+      border: 2px solid var(--panel-line);
+      border-radius: 0;
+      background: #140f0d;
+      padding: 10px;
+      font-family: "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 13px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 8px;
+      border-bottom: 1px solid rgba(252, 219, 166, 0.18);
+    }
+
+    th {
+      color: var(--paper);
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+      .controls { grid-template-columns: 1fr 1fr; }
+      .columns { grid-template-columns: 1fr; }
+      .hero { grid-template-columns: 1fr; }
+      .tucan-logo { margin: 0; width: 190px; }
+    }
+
+    @media (max-width: 600px) {
+      .grid { grid-template-columns: 1fr; }
+      .controls { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="overlay">
+    <section class="card">
+      <div class="hero">
+        <div>
+          <h1 class="title">Claw Console: Tucan Agent</h1>
+          <p class="sub">Retro overlay control panel for agent_fully_autonomous_test.py</p>
+          <div class="status">
+            <span id="status-dot" class="dot"></span>
+            <strong id="status-text">Checking agent status...</strong>
+            <span id="status-extra" class="sub"></span>
+          </div>
+        </div>
+        <div class="tucan-logo" aria-hidden="true">
+          <svg viewBox="0 0 360 320" xmlns="http://www.w3.org/2000/svg" role="img">
+            <rect x="26" y="228" width="300" height="16" rx="8" fill="#5a3e28" />
+            <g class="tsurf">
+              <ellipse cx="198" cy="266" rx="108" ry="14" fill="#0b1522" opacity="0.65" />
+              <path d="M84 258 C126 246 262 246 306 258 C296 272 94 272 84 258 Z" fill="#0ea5e9" />
+              <path d="M95 258 C138 250 252 250 292 258" fill="none" stroke="#bae6fd" stroke-width="2" opacity="0.8" />
+              <rect x="178" y="251" width="40" height="7" rx="3" fill="#fb7185" />
+              <path d="M154 272 C162 268 170 268 178 272" stroke="#67e8f9" stroke-width="2" fill="none" />
+              <path d="M206 272 C214 268 222 268 230 272" stroke="#67e8f9" stroke-width="2" fill="none" />
+            </g>
+            <g class="tbob">
+              <ellipse cx="210" cy="205" rx="56" ry="58" fill="#1a1a2e" />
+              <ellipse cx="202" cy="205" rx="33" ry="40" fill="#f0eee8" />
+              <ellipse cx="228" cy="244" rx="20" ry="12" fill="#e83232" />
+              <ellipse cx="196" cy="132" rx="52" ry="44" fill="#1a1a2e" />
+              <ellipse cx="184" cy="112" rx="26" ry="14" fill="#2a2a44" opacity="0.7" />
+              <circle cx="178" cy="124" r="16" fill="#60c832" />
+              <circle cx="178" cy="124" r="10" fill="#0a0a0a" />
+              <circle cx="174" cy="120" r="3" fill="#ffffff" />
+              <ellipse class="tblink" cx="178" cy="114" rx="16" ry="8" fill="#1a1a2e" />
+
+              <path d="M214 116 C252 106 284 108 308 116 C320 122 320 136 306 142 C280 152 240 150 218 138 C208 132 206 122 214 116 Z" fill="#f5a623" />
+              <path d="M302 116 C314 122 316 136 308 146 C318 140 322 130 318 120 C314 112 308 108 302 106 Z" fill="#d45a1a" />
+              <path d="M220 138 C244 146 278 148 304 142 C290 152 264 156 236 154 C222 152 212 146 210 140 Z" fill="#3aaa5a" />
+
+              <g class="tbeak">
+                <path d="M214 128 C236 138 266 142 294 140 C306 138 314 134 318 128 C320 138 314 146 300 152 C274 158 242 158 220 150 C210 144 208 134 214 128 Z" fill="#1f1b16" />
+              </g>
+
+              <path d="M248 168 C278 186 298 204 292 218 C284 226 266 218 244 198 C232 186 232 174 248 168 Z" fill="#1a1a2e" />
+              <path d="M158 246 C154 254 150 264 148 274" stroke="#3a2a1a" stroke-width="3" fill="none" />
+              <path d="M232 246 C236 254 238 264 240 274" stroke="#3a2a1a" stroke-width="3" fill="none" />
+            </g>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="controls">
+        <div class="field">
+          <label for="model">Model</label>
+          <input id="model" type="text" value="gemma4:latest">
+        </div>
+        <div class="field">
+          <label for="max-iter">Max Iterations</label>
+          <input id="max-iter" type="number" min="1" value="2">
+        </div>
+        <button id="start-btn">Start Agent</button>
+        <button id="refresh-btn" type="button">Refresh</button>
+      </div>
+      <p id="action-note" class="sub"></p>
+    </section>
+
+    <section class="card">
+      <div class="grid">
+        <div class="metric"><div class="label">Total runs</div><div id="m-total" class="value">-</div></div>
+        <div class="metric"><div class="label">Successful</div><div id="m-success" class="value">-</div></div>
+        <div class="metric"><div class="label">Failed</div><div id="m-failed" class="value">-</div></div>
+        <div class="metric"><div class="label">Best F1</div><div id="m-best" class="value">-</div></div>
+      </div>
+      <p id="log-file" class="sub"></p>
+    </section>
+
+    <section class="card">
+      <h2 class="title" style="font-size:18px;">Recent Runs</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Arch</th>
+            <th>F1</th>
+            <th>Accuracy</th>
+            <th>Success</th>
+          </tr>
+        </thead>
+        <tbody id="recent-body"></tbody>
+      </table>
+    </section>
+
+    <section class="columns">
+      <div class="card">
+        <h2 class="title" style="font-size:18px;">Stdout Tail</h2>
+        <div id="stdout" class="logbox"></div>
+      </div>
+      <div class="card">
+        <h2 class="title" style="font-size:18px;">Stderr Tail</h2>
+        <div id="stderr" class="logbox"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const statusDot = document.getElementById("status-dot");
+    const statusText = document.getElementById("status-text");
+    const statusExtra = document.getElementById("status-extra");
+    const actionNote = document.getElementById("action-note");
+    const startBtn = document.getElementById("start-btn");
+
+    function fmtNum(v, digits = 4) {
+      if (v === null || v === undefined || Number.isNaN(v)) return "-";
+      return Number(v).toFixed(digits);
+    }
+
+    async function loadSummary() {
+      const r = await fetch("/api/summary");
+      const data = await r.json();
+
+      document.getElementById("m-total").textContent = data.total_runs ?? "-";
+      document.getElementById("m-success").textContent = data.successful_runs ?? "-";
+      document.getElementById("m-failed").textContent = data.failed_runs ?? "-";
+      document.getElementById("m-best").textContent = fmtNum(data.best_f1);
+      document.getElementById("log-file").textContent = data.log_file ? `Log file: ${data.log_file}` : "No experiment log found yet.";
+
+      const body = document.getElementById("recent-body");
+      body.innerHTML = "";
+      for (const row of data.recent_runs || []) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.id ?? "-"}</td>
+          <td>${row.name ?? "-"}</td>
+          <td>${row.architecture ?? "-"}</td>
+          <td>${fmtNum(row.f1)}</td>
+          <td>${fmtNum(row.accuracy)}</td>
+          <td>${row.success ? "yes" : "no"}</td>
+        `;
+        body.appendChild(tr);
+      }
+    }
+
+    async function loadStatus() {
+      const r = await fetch("/api/status");
+      const data = await r.json();
+
+      statusDot.className = "dot";
+      if (data.running) {
+        statusDot.classList.add("running");
+        statusText.textContent = "Agent is running";
+        statusExtra.textContent = data.elapsed_sec ? `Elapsed: ${data.elapsed_sec}s` : "";
+        startBtn.disabled = true;
+      } else if (data.return_code === null) {
+        statusDot.classList.add("stopped");
+        statusText.textContent = "Agent has not started";
+        statusExtra.textContent = "";
+        startBtn.disabled = false;
+      } else {
+        statusDot.classList.add(data.return_code === 0 ? "running" : "stopped");
+        statusText.textContent = data.return_code === 0 ? "Last run completed" : "Last run finished with errors";
+        statusExtra.textContent = `Exit code: ${data.return_code}`;
+        startBtn.disabled = false;
+      }
+
+      document.getElementById("stdout").textContent = (data.stdout_tail || []).join("\n");
+      document.getElementById("stderr").textContent = (data.stderr_tail || []).join("\n");
+    }
+
+    async function startAgent() {
+      const model = document.getElementById("model").value.trim() || "gemma4:latest";
+      const maxIter = Number(document.getElementById("max-iter").value) || 2;
+
+      const r = await fetch("/api/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: model, max_iter: maxIter })
+      });
+      const data = await r.json();
+      actionNote.textContent = data.message || "No response";
+
+      await loadStatus();
+      await loadSummary();
+    }
+
+    document.getElementById("refresh-btn").addEventListener("click", async () => {
+      await loadStatus();
+      await loadSummary();
+    });
+    startBtn.addEventListener("click", startAgent);
+
+    async function tick() {
+      try {
+        await loadStatus();
+        await loadSummary();
+      } catch (e) {
+        actionNote.textContent = "Overlay could not refresh data.";
+      }
+    }
+
+    tick();
+    setInterval(tick, 5000);
+  </script>
+</body>
+</html>
