@@ -3,204 +3,100 @@
 import re
 
 ARCH_PROMPT = """
-Architecture: Multi-vectorizer TF-IDF ensemble with rank averaging.
+Architecture: BoW_advanced = multi-vectorizer TF-IDF ensemble with fold-wise rank averaging.
 
-CRITICAL RULES (follow exactly):
-- N_SPLITS is already defined - do NOT redefine it or set it to any value.
-- In the CV loop use y[train_index] and y[val_index], NEVER the full y array.
-- Import scipy.stats at the top: from scipy.stats import rankdata
-- oof_preds must be a 1D array: oof_preds = np.zeros(len(y))
-- NEVER reference train_idx/val_idx outside the CV loop (no fitting/transforming before the loop).
-- Define y = train_df['target'].values BEFORE any DRY_RUN slicing.
+Implement a complete script. Code only.
 
-Step 1 - Feature matrix per fold (fit on train, transform train/val/test):
-    from scipy.sparse import hstack
-    word_vec = TfidfVectorizer(ngram_range=(1,3), sublinear_tf=True, min_df=2, max_df=0.97)
-    char_vec = TfidfVectorizer(analyzer='char_wb', ngram_range=(3,6), sublinear_tf=True)
-    kw_vec   = TfidfVectorizer(ngram_range=(1,2))
-    loc_vec  = TfidfVectorizer(ngram_range=(1,2))
-    IMPORTANT: build separate arrays BEFORE CV:
-        X_text = train_df['text'].values
-        X_kw   = train_df['keyword'].values
-        X_loc  = train_df['location'].values
-        X_test_text = test_df['text'].values
-        X_test_kw   = test_df['keyword'].values
-        X_test_loc  = test_df['location'].values
-    In each fold, slice each field separately:
-        X_tr_text = X_text[train_idx]; X_va_text = X_text[val_idx]
-        X_tr_kw   = X_kw[train_idx];   X_va_kw   = X_kw[val_idx]
-        X_tr_loc  = X_loc[train_idx];  X_va_loc  = X_loc[val_idx]
-    Fit each vectorizer on the matching TRAIN field only:
-        word/char: fit on X_tr_text
-        kw: fit on X_tr_kw
-        loc: fit on X_tr_loc
-    Transform train/val/test separately and stack into NEW sparse matrices:
-        X_tr_sparse, X_va_sparse, X_te_sparse (do not overwrite X_tr/X_va raw text variables).
-    Stack: X_tr = hstack([word_tr, char_tr, kw_tr, loc_tr]).tocsr()
+Hard constraints:
+- Do not redefine N_SPLITS.
+- Define y = train_df['target'].values before any DRY_RUN slicing.
+- If DRY_RUN is True, slice train-side arrays to first 200 samples BEFORE CV loop.
+- Never use train_idx/val_idx outside CV loop.
+- Use y_tr = y[train_idx], y_va = y[val_idx] inside loop.
+- oof_preds must be 1D: np.zeros(len(y)).
 
-Step 2 - Train 3 classifiers on X_tr, y[train_index]:
-    1. LogisticRegression(C=3.0, class_weight='balanced', solver='liblinear', max_iter=2000)
-    2. CalibratedClassifierCV(estimator=Pipeline([('sc', MaxAbsScaler()), ('svc', LinearSVC(C=0.75, class_weight='balanced'))]), cv=2)
-    3. MultinomialNB(alpha=0.05)
+Required imports:
+- from scipy.sparse import hstack
+- from scipy.stats import rankdata
 
-Step 3 - Rank averaging:
-    from scipy.stats import rankdata
-    ranked = [rankdata(p) / len(p) for p in [proba1, proba2, proba3]]
-    ensemble = np.mean(ranked, axis=0)
+Data arrays before CV:
+- X_text = train_df['text'].values
+- X_kw = train_df['keyword'].values
+- X_loc = train_df['location'].values
+- X_test_text = test_df['text'].values
+- X_test_kw = test_df['keyword'].values
+- X_test_loc = test_df['location'].values
 
-Step 4 - Store: oof_preds[val_index] = (ensemble >= 0.5).astype(int)
-Step 5 - Average test probs across folds, threshold at 0.5 for submission.
-Important: inside each fold, compute test probabilities from clf1/clf2/clf3 on X_te,
-rank-average those test probabilities, and add to test_probs using / N_SPLITS.
+Per-fold feature pipeline:
+1. Slice by fold for each field (text/keyword/location).
+2. Fit vectorizers on TRAIN subset only:
+   - word_vec: TfidfVectorizer(ngram_range=(1,3), sublinear_tf=True, min_df=2, max_df=0.97)
+   - char_vec: TfidfVectorizer(analyzer='char_wb', ngram_range=(3,6), sublinear_tf=True)
+   - kw_vec:   TfidfVectorizer(ngram_range=(1,2))
+   - loc_vec:  TfidfVectorizer(ngram_range=(1,2))
+3. Build sparse matrices:
+   - X_tr_sparse = hstack([...]).tocsr()
+   - X_va_sparse = hstack([...]).tocsr()
+   - X_te_sparse = hstack([...]).tocsr()
 
-MUST: inside each fold, compute validation probabilities on X_va_sparse and set oof_preds[val_idx].
-MUST: test_probs update uses ONLY the rank-averaged ensemble_test (do NOT sum model probabilities directly).
-MUST: clf2 is CalibratedClassifierCV(Pipeline([('sc', MaxAbsScaler()), ('svc', LinearSVC(...))]), cv=2) so predict_proba works.
+Models (fit on X_tr_sparse, y_tr):
+1. LogisticRegression(C=3.0, class_weight='balanced', solver='liblinear', max_iter=2000)
+2. CalibratedClassifierCV(estimator=Pipeline([('sc', MaxAbsScaler()), ('svc', LinearSVC(C=0.75, class_weight='balanced'))]), cv=2)
+3. MultinomialNB(alpha=0.05)
 
-If DRY_RUN: limit train/val data to first 200 samples BEFORE the CV loop.
+Ensembling and outputs:
+- Validation: proba1/proba2/proba3 on X_va_sparse, rank-average, then set
+  oof_preds[val_idx] = (ensemble_val >= 0.5).astype(int)
+- Test: proba1_test/proba2_test/proba3_test on X_te_sparse, rank-average to ensemble_test,
+  then test_probs += ensemble_test / N_SPLITS
+- Do not directly sum raw test probabilities from models.
+
+Final submission threshold is 0.5.
 """
 
 MODEL_PROMPT = (
-        "Write ONLY a Python function `get_ensemble_probs(X_tr, y_tr, X_va, X_te)` "
-        "that trains LogisticRegression, CalibratedClassifierCV(LinearSVC), and MultinomialNB "
-        "on sparse matrix X_tr, combines with rank averaging, and returns "
-        "{'valid': probs, 'test': probs}. Write ONLY the function, no imports.\n\n"
-        "```python\ndef get_ensemble_probs(X_tr, y_tr, X_va, X_te):\n    ...\n```"
+        "Return ONLY this function definition (no markdown, no imports, no extra text):\n"
+        "def get_ensemble_probs(X_tr, y_tr, X_va, X_te): ...\n\n"
+        "Requirements:\n"
+        "- Inputs X_tr, X_va, X_te are already sparse matrices.\n"
+        "- Fit exactly 3 models on X_tr, y_tr:\n"
+        "  1) LogisticRegression(C=3.0, class_weight='balanced', solver='liblinear', max_iter=2000)\n"
+        "  2) CalibratedClassifierCV(estimator=Pipeline([('sc', MaxAbsScaler()), ('svc', LinearSVC(C=0.75, class_weight='balanced'))]), cv=2)\n"
+        "  3) MultinomialNB(alpha=0.05)\n"
+        "- Compute valid probs on X_va and test probs on X_te for each model.\n"
+        "- Use rank averaging with rankdata for both valid and test outputs.\n"
+        "- Return dict with exact keys: {'valid': ensemble_valid, 'test': ensemble_test}.\n"
+        "- Do not threshold; return probabilities in [0,1].\n"
 )
 
 
 def preflight_issues(code: str, arch: str) -> list[str]:
     issues: list[str] = []
 
-    if re.search(r"train_df\[['\"]keyword['\"]\]\s*\[\s*train_idx\s*\]", code) or re.search(r"train_df\[['\"]keyword['\"]\]\s*\[\s*val_idx\s*\]", code):
-        issues.append("Unsafe keyword slicing: build X_kw = train_df['keyword'].values before CV and slice X_kw[train_idx]/X_kw[val_idx] (avoid train_df['keyword'][train_idx])")
-    if re.search(r"train_df\[['\"]location['\"]\]\s*\[\s*train_idx\s*\]", code) or re.search(r"train_df\[['\"]location['\"]\]\s*\[\s*val_idx\s*\]", code):
-        issues.append("Unsafe location slicing: build X_loc = train_df['location'].values before CV and slice X_loc[train_idx]/X_loc[val_idx] (avoid train_df['location'][train_idx])")
-
+    # Keep this intentionally lightweight: catch only high-impact, frequent failures.
     if "import scipy.sparse.hstack" in code:
-        issues.append("Invalid import: use 'from scipy.sparse import hstack' (never 'import scipy.sparse.hstack')")
-    if "from sklearn.calibrated import CalibratedClassifierCV" in code:
-        issues.append("Invalid import: use 'from sklearn.calibration import CalibratedClassifierCV' (no sklearn.calibrated module)")
-    if "from sklearn.calibrated_classifier_cv import CalibratedClassifierCV" in code:
-        issues.append("Invalid import: use 'from sklearn.calibration import CalibratedClassifierCV'")
+        issues.append("Invalid import: use 'from scipy.sparse import hstack'")
+    if "from sklearn.calibrated import CalibratedClassifierCV" in code or "from sklearn.calibrated_classifier_cv import CalibratedClassifierCV" in code:
+        issues.append("Invalid import path for CalibratedClassifierCV; use 'from sklearn.calibration import CalibratedClassifierCV'")
+
     if re.search(r"(?m)^\s*y\s*=\s*train_df\[['\"]target['\"]\]\s*$", code):
-        issues.append("Bare y Series: define y = train_df['target'].values (Series without .values breaks rules and can confuse CV)")
-    if "skf.split(X_text, train_df['target'])" in code or 'skf.split(X_text, train_df["target"])' in code:
-        issues.append("Bare target in CV: use y = train_df['target'].values then skf.split(X_text, y)")
-    if re.search(r"(?s)for\s+fold\s*,\s*\(train_idx,\s*val_idx\)\s+in\s+enumerate\([^\)]*skf\.split[^\)]*\)\s*:\s*.*?\n\s*if\s+DRY_RUN\s*:", code):
-        issues.append("DRY_RUN misused: slice to 200 rows BEFORE the CV loop; do not branch on DRY_RUN inside the fold loop")
-
-    loop_pos = code.find("for fold")
-    if loop_pos != -1:
-        pre_loop = code[:loop_pos]
-        if re.search(r"\btrain_idx\b", pre_loop) or re.search(r"\bval_idx\b", pre_loop):
-            issues.append("Index variables used before CV loop: never reference train_idx/val_idx outside the CV loop")
-
+        issues.append("Define y as numpy values: y = train_df['target'].values")
     if "y = y[:200]" in code and not re.search(r"(?m)^\s*y\s*=\s*train_df\[['\"]target['\"]\]\.values", code):
-        issues.append("y sliced before definition: define y = train_df['target'].values before DRY_RUN slicing")
-
-    if ("kw_vec" in code or "keyword" in code) and "train_df['keyword']" not in code and 'train_df["keyword"]' not in code:
-        if "kw_vec" in code:
-            issues.append("Keyword features missing: define X_kw = train_df['keyword'].values and fit kw_vec on X_tr_kw, not on X_tr text")
-    if ("loc_vec" in code or "location" in code) and "train_df['location']" not in code and 'train_df["location"]' not in code:
-        if "loc_vec" in code:
-            issues.append("Location features missing: define X_loc = train_df['location'].values and fit loc_vec on X_tr_loc, not on X_tr text")
-
-    if re.search(r"\bX_va\s*=\s*hstack\(\[word_tr", code):
-        issues.append("Validation matrix bug: do not assign X_va = hstack([word_tr,...]); build X_tr_sparse from *_tr and X_va_sparse from *_va")
-    if re.search(r"\bX_tr\s*=\s*hstack\(\[word_va", code):
-        issues.append("Train matrix bug: do not build X_tr from validation features; create X_tr_sparse from *_tr")
-    if re.search(r"(?m)^\s*X_va_sparse\s*=\s*hstack\(\[[^\]]*_tr_sparse", code):
-        issues.append("Validation matrix bug: X_va_sparse is built from *_tr_sparse; build it from vectorizer.transform(X_va_*) outputs")
-    if re.search(r"(?m)^\s*clf\d\.fit\(\s*X_tr_sparse", code) and not re.search(r"(?m)^\s*X_tr_sparse\s*=", code):
-        issues.append("Undefined X_tr_sparse: build X_tr_sparse via hstack([...]).tocsr() before fitting classifiers")
-    if re.search(r"\bX_tr_text\s*=\s*X_text\[", code) and not re.search(r"(?m)^\s*X_text\s*=", code):
-        issues.append("Undefined X_text: define X_text = train_df['text'].values before CV (or use X directly)")
-
-    if re.search(r"\bX_tr\s*,\s*X_va\s*=\s*X\[\s*train_idx\s*\]\s*,\s*X\[\s*val_idx\s*\]", code):
-        if (
-            re.search(r"\bclf1\.fit\(\s*X_tr\s*,\s*y_tr\s*\)", code)
-            or re.search(r"\bclf2\.fit\(\s*X_tr\s*,\s*y_tr\s*\)", code)
-            or re.search(r"\bclf3\.fit\(\s*X_tr\s*,\s*y_tr\s*\)", code)
-        ):
-            issues.append("Model fit bug: classifiers must be fit on the stacked sparse matrix (e.g., X_tr_sparse), not raw X_tr text")
-
-    if code.count("test_probs +=") >= 2 and "ensemble_test" not in code:
-        issues.append("Test aggregation bug: compute ensemble_test via rank averaging and do test_probs += ensemble_test / N_SPLITS (don't sum 3 model probs)")
-    if "test_probs +=" in code and "ensemble_test" not in code and re.search(r"test_probs\s*\+=.*predict_proba\(", code):
-        issues.append("Test aggregation bug: compute ensemble_test via rank averaging and do test_probs += ensemble_test / N_SPLITS (don't sum model probs directly)")
-
-    if re.search(r"oof_preds\[\s*val_idx\s*\]\s*=\s*\(.*predict_proba\(", code, flags=re.S):
-        if re.search(r"oof_preds\[\s*val_idx\s*\]\s*=\s*\(.*?\)\s*/\s*3", code, flags=re.S):
-            issues.append("Validation aggregation bug: use rank averaging (rankdata + mean) for validation ensemble, not plain mean of probabilities")
+        issues.append("Define y before DRY_RUN slicing")
+    if re.search(r"(?s)for\s+fold\s*,\s*\(train_idx,\s*val_idx\)\s+in\s+enumerate\([^\)]*\)\s*:\s*.*?\n\s*if\s+DRY_RUN\s*:", code):
+        issues.append("Apply DRY_RUN slicing before the CV loop, not inside it")
 
     if "LinearSVC" in code and "predict_proba" in code and "CalibratedClassifierCV(" not in code:
-        issues.append("Probability bug: LinearSVC has no predict_proba; wrap it with CalibratedClassifierCV(estimator=Pipeline([...LinearSVC...]), cv=2)")
+        issues.append("LinearSVC must be wrapped in CalibratedClassifierCV for predict_proba")
+    if "rankdata(" in code and "from scipy.stats import rankdata" not in code:
+        issues.append("Missing import: from scipy.stats import rankdata")
 
-    if re.search(r"(?m)^test_probs\s*\+=", code):
-        issues.append("Incorrect test accumulation location: update test_probs inside the CV loop (indented), not after the loop")
-    if ("X_te_sparse" in code or "X_te =" in code) and not re.search(r"predict_proba\(\s*X_te", code) and "ensemble_test" not in code:
-        issues.append("Missing test prediction: compute proba*_test on X_te(_sparse), rank-average to ensemble_test, and accumulate into test_probs inside each fold")
-    if re.search(r"test_probs\s*=\s*np\.zeros\(\s*len\(\s*X_test\s*\)\s*\)", code) and not re.search(r"(?m)^\s*X_test\s*=", code):
-        issues.append("Undefined X_test: use X_test_text or define X_test = test_df['text'].values before using len(X_test)")
-    if re.search(r"\bskf\.split\(\s*X_text\s*,\s*y\s*\)", code) and not re.search(r"(?m)^\s*y\s*=", code):
-        issues.append("Missing target y: define y = train_df['target'].values before CV")
-
-    if "X_test_sparse" in code and not re.search(r"(?m)^\s*X_test_sparse\s*=", code):
-        issues.append("Undefined X_test_sparse: build X_te_sparse (or X_test_sparse) via vectorizers inside each fold before predict_proba")
-    if re.search(r"predict_proba\(\s*X_te_sparse\s*\)", code) and not re.search(r"(?m)^\s*X_te_sparse\s*=", code):
-        issues.append("Undefined X_te_sparse: build X_te_sparse inside each fold via hstack([...]).tocsr() before predict_proba(X_te_sparse)")
-
-    has_oof_prob = bool(re.search(r"(?m)^\s*oof_prob[s]?\s*=\s*np\.zeros\(", code))
-    writes_oof_prob = bool(re.search(r"oof_prob[s]?\[\s*(?:val|va)_(?:idx|index)\s*\]\s*=", code))
-    writes_oof_preds = bool(re.search(r"oof_preds\[\s*(?:val|va)_(?:idx|index)\s*\]\s*=", code))
-    if (("oof_preds" in code) or ("oof_prob" in code)) and not (writes_oof_preds or (has_oof_prob and writes_oof_prob)):
-        issues.append("Missing OOF update: set either oof_preds[val_idx] (labels) or oof_prob(s)[val_idx] (probabilities) inside the CV loop")
-    if "X_va_sparse" in code and not re.search(r"predict_proba\(\s*X_va_sparse\s*\)", code):
-        issues.append("Missing validation prediction: compute proba1/proba2/proba3 on X_va_sparse and build ensemble for oof_preds")
-    if re.search(r"\bproba\d+_test\s*=", code) and not re.search(r"predict_proba\(\s*X_va", code):
-        issues.append("Validation missing: you compute proba*_test but never predict on validation (X_va*); add validation probs for OOF metrics")
-    if re.search(r"oof_preds\[\s*val_idx\s*\][^\n]*ensemble_test", code):
-        issues.append("OOF bug: do not use ensemble_test (test) for oof_preds; compute validation ensemble from X_va_sparse")
-    if re.search(r"(?m)^\s*oof_preds\[\s*val_idx\s*\]\s*=\s*.*predict_proba\(\s*X_va_sparse\s*\)", code) and not re.search(r"oof_preds\[\s*val_idx\s*\].*>=\s*0\.5", code):
-        issues.append("OOF format bug: oof_preds[val_idx] must be binary labels (thresholded), not raw probabilities")
-
-    if re.search(r"test_probs\s*\+=\s*ensemble_test\s*/\s*N_SPLITS", code) and not re.search(r"predict_proba\(\s*X_te", code):
-        issues.append("Incorrect test accumulation: ensemble_test appears to be computed from validation; compute proba*_test on X_te(_sparse) and accumulate that")
     if re.search(r"\bproba\d+_test\s*=\s*.*predict_proba\(\s*X_va_sparse\s*\)", code):
-        issues.append("Incorrect test prediction source: proba*_test must be computed on X_te_sparse (test), not X_va_sparse (validation)")
-
-    if "CalibratedClassifierCV(" in code and "from sklearn.calibration import CalibratedClassifierCV" not in code:
-        issues.append("Missing import: from sklearn.calibration import CalibratedClassifierCV")
-    if "MaxAbsScaler" in code and "from sklearn.preprocessing import MaxAbsScaler" not in code:
-        issues.append("Missing import: from sklearn.preprocessing import MaxAbsScaler")
-    if "LinearSVC" in code and "from sklearn.svm import LinearSVC" not in code:
-        issues.append("Missing import: from sklearn.svm import LinearSVC")
-    if "MultinomialNB" in code and "from sklearn.naive_bayes import MultinomialNB" not in code:
-        issues.append("Missing import: from sklearn.naive_bayes import MultinomialNB")
-    if "predict_proba(X_va)" in code and "X_va = hstack(" not in code:
-        issues.append("Validation features not vectorized: expected X_va = hstack(...).tocsr() before predict_proba(X_va)")
-    if "test_probs +=" not in code:
-        if not re.search(r"test_probs\s*\+=", code):
-            issues.append("Missing fold-wise test probability accumulation: test_probs += ... / N_SPLITS")
-    if "test_probs += ensemble / N_SPLITS" in code and "predict_proba(X_te)" not in code:
-        issues.append("Incorrect test accumulation: using validation ensemble for test_probs; use ensemble_test computed from X_te")
-    if "skf.split(X_tr, y)" in code:
-        issues.append("Incorrect CV split source: use skf.split(X, y), not skf.split(X_tr, y)")
-    if "fit_transform(train_df['text'])" in code or 'fit_transform(train_df["text"])' in code:
-        issues.append("Data leakage/mismatch: do not fit vectors on full train_df before CV; fit on fold train text (X_tr) inside loop")
-    if "fit_transform(train_df['keyword'])" in code or 'fit_transform(train_df["keyword"])' in code:
-        issues.append("Data leakage/mismatch: keyword vectorizer must fit on fold train subset, not full train_df")
-    if "fit_transform(train_df['location'])" in code or 'fit_transform(train_df["location"])' in code:
-        issues.append("Data leakage/mismatch: location vectorizer must fit on fold train subset, not full train_df")
-    if "predict_proba(X_test)" in code:
-        issues.append("Incorrect test input: sparse models must use predict_proba(X_te) after fold-specific vectorization, not raw X_test")
-    if "clf1.fit(" in code and "clf1 =" not in code:
-        issues.append("Missing classifier initialization: clf1 is used before assignment")
-    if "clf2.fit(" in code and "clf2 =" not in code:
-        issues.append("Missing classifier initialization: clf2 is used before assignment")
-    if "clf3.fit(" in code and "clf3 =" not in code:
-        issues.append("Missing classifier initialization: clf3 is used before assignment")
+        issues.append("Test probabilities must come from X_te_sparse, not X_va_sparse")
+    if "test_probs" in code and not re.search(r"test_probs\s*\+=\s*ensemble_test\s*/\s*N_SPLITS", code):
+        issues.append("Accumulate fold test predictions as: test_probs += ensemble_test / N_SPLITS")
+    if "oof_preds" in code and not re.search(r"oof_preds\[\s*(?:val_idx|val_index)\s*\]\s*=", code):
+        issues.append("Missing OOF assignment inside CV loop: oof_preds[val_idx] = ...")
 
     return issues
 
