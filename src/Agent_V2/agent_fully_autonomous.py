@@ -51,7 +51,7 @@ EXPERIMENT_HOOKS = {
 }
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-MAX_ITERATIONS = 2
+MAX_ITERATIONS = 1
 TARGET_F1 = 0.88
 PLATEAU_WINDOW = 5
 MIN_IMPROVEMENT = 0.002

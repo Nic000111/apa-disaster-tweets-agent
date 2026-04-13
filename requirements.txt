@@ -1,4 +1,7 @@
-# Agent_V2 fully autonomous runner (src/Agent_V2/agent_fully_autonomous.py)
+# Agent_V2 fully autonomous stack dependencies.
+# Covers third-party imports used by src/Agent_V2 and generated experiment scripts.
+# Standard-library modules (os, re, json, argparse, etc.) are intentionally excluded.
+
 # Orchestrator/runtime deps
 pandas>=2.2
 requests>=2.31
@@ -14,7 +17,7 @@ accelerate>=0.30
 evaluate>=0.4
 sentencepiece>=0.1.99
 
-# Optional project extras
+# Non-agent project extras
 streamlit>=1.34
 plotly>=5.20
 kaggle>=1.6
