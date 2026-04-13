@@ -22,6 +22,8 @@ venv/
 # Data
 data/
 !data/.gitkeep
+!data/train.csv
+!data/test.csv
 
 # Logs / outputs / models
 logs/
