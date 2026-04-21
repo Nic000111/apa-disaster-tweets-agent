@@ -49,12 +49,11 @@ FAMILY_RUN_ESTIMATES = {
 }
 
 FAMILY_MODULES = {
-     "transformer": exp_transformer,
+    "transformer": exp_transformer,
     "bow_advanced": exp_bow_advanced,
     "cnn": exp_cnn,
     "lstm": exp_lstm,
     "bow": exp_bow,
-   
 }
 
 
