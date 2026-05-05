@@ -33,13 +33,13 @@ Run shape:
 - one file per family hook in `families/`
 - one prompt template per family in `templates/`
 - up to 4 adaptive sweep runs by default
-- sweep full runs use a random 4,000-row labeled sample split 80/20 for train/validation
+- sweep full runs use a random 2,000-row labeled sample split 80/20 for train/validation
 - once a family has one successful sweep run, Agent_3 runs one follow-up experiment and then moves to the next family
 - same family prompt contract across runs
 - parameters change based on prior F1, crashes, and timeouts
 - search uses only trials from the current invocation, not older `agent3_log.json` entries
 - the best two sweep architectures are optimized with the remaining time split between them
-- optimization uses 10,000 labeled rows when available; if fewer exist, it uses the whole labeled dataset split 80/20 for train/validation
+- optimization uses a random 2,000-row labeled sample split 80/20 for train/validation
 - sweep and optimization trials are metrics-only; the full `test.csv` submission is generated once from the best overall model
 - final submission reruns the best overall model on the whole available labeled training set before predicting the full unlabeled `test.csv`
 

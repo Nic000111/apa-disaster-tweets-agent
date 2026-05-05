@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Agent_3 Control Panel</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161a22;
+    --panel-2: #1e2330;
+    --text: #e7e9ee;
+    --muted: #8a92a6;
+    --accent: #4f8cff;
+    --ok: #2ecc71;
+    --bad: #ff5d6c;
+    --warn: #f4b740;
+    --border: #2a3040;
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .status {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .dot.running { background: var(--ok); box-shadow: 0 0 0 4px rgba(46, 204, 113, 0.18); }
+  .dot.idle { background: var(--muted); }
+  .dot.error { background: var(--bad); }
+
+  nav.tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    padding: 0 20px;
+  }
+  nav.tabs button {
+    background: none;
+    border: none;
+    color: var(--muted);
+    padding: 12px 18px;
+    cursor: pointer;
+    font-size: 13px;
+    border-bottom: 2px solid transparent;
+  }
+  nav.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  main { padding: 20px; max-width: 1400px; margin: 0 auto; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .panel h2 { margin: 0 0 12px 0; font-size: 14px; font-weight: 600; }
+
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 4px; }
+  input[type=text], input[type=number], select {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    min-width: 160px;
+  }
+  button.primary, button.danger, button.ghost {
+    padding: 7px 14px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.danger { background: var(--bad); color: white; border-color: var(--bad); }
+  button.ghost { background: var(--panel-2); color: var(--text); }
+  .checkbox { flex-direction: row; align-items: center; gap: 6px; }
+  .checkbox input { margin: 0; }
+
+  pre.log {
+    background: #08090c;
+    color: #d3d8e2;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    height: 460px;
+    overflow: auto;
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  pre.prompt {
+    background: #08090c;
+    color: #d3d8e2;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    max-height: 600px;
+    overflow: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .grid-2 { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+  .list {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: auto;
+    max-height: 600px;
+  }
+  .list .item {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .list .item:hover { background: rgba(79, 140, 255, 0.08); }
+  .list .item.selected { background: rgba(79, 140, 255, 0.18); }
+  .list .item .meta { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .badge.ok { background: rgba(46, 204, 113, 0.18); color: var(--ok); }
+  .badge.bad { background: rgba(255, 93, 108, 0.18); color: var(--bad); }
+  .badge.warn { background: rgba(244, 183, 64, 0.18); color: var(--warn); }
+  .badge.muted { background: rgba(138, 146, 166, 0.18); color: var(--muted); }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .kv { display: grid; grid-template-columns: 160px 1fr; gap: 4px 12px; font-size: 12px; }
+  .kv .k { color: var(--muted); }
+  .kv .v { font-family: ui-monospace, monospace; word-break: break-word; }
+
+  details summary { cursor: pointer; padding: 6px 0; font-size: 12px; color: var(--muted); }
+  details[open] summary { color: var(--text); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Agent_3 Control Panel</h1>
+  <div class="status">
+    <span id="status-dot" class="dot idle"></span>
+    <span id="status-text">idle</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button id="tab-run-btn" class="active" data-tab="run">Run</button>
+  <button id="tab-prompts-btn" data-tab="prompts">Prompts</button>
+  <button id="tab-graph-btn" data-tab="graph">Graph</button>
+</nav>
+
+<main>
+
+  <!-- RUN TAB -->
+  <section id="tab-run" class="tab-panel active">
+    <div class="panel">
+      <h2>Launch agent</h2>
+      <div class="row">
+        <label>
+          Family
+          <select id="family-input">
+            <option value="">all (sweep)</option>
+            {% for f in families %}<option value="{{f}}">{{f}}</option>{% endfor %}
+          </select>
+        </label>
+        <label>
+          Time budget (min)
+          <input type="number" id="minutes-input" value="80" min="1" max="600">
+        </label>
+        <label>
+          Max runs / family
+          <input type="number" id="max-runs-input" placeholder="default" min="1" max="50">
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="no-winner-input">
+          Skip winner optimization
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="fresh-input">
+          Fresh log (--fresh)
+        </label>
+        <button id="launch-btn" class="primary">Launch</button>
+        <button id="stop-btn" class="danger" disabled>Stop</button>
+        <button id="refresh-btn" class="ghost">Refresh status</button>
+      </div>
+      <div id="run-meta" style="margin-top:12px; font-size:12px; color:var(--muted);"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Live log</h2>
+      <pre id="log-output" class="log">No log yet. Launch the agent to start.</pre>
+    </div>
+  </section>
+
+  <!-- PROMPTS TAB -->
+  <section id="tab-prompts" class="tab-panel">
+    <div class="panel">
+      <h2>Prompts &amp; spec per run</h2>
+      <div class="grid-2">
+        <div>
+          <label style="margin-bottom:8px;">
+            Session
+            <select id="prompts-session-select"></select>
+          </label>
+          <div class="list" id="prompts-run-list"></div>
+        </div>
+        <div>
+          <div id="prompts-run-meta"></div>
+          <details open style="margin-top:12px;">
+            <summary>Spec (JSON)</summary>
+            <pre class="prompt" id="prompt-spec"></pre>
+          </details>
+          <details open style="margin-top:12px;">
+            <summary>Generation prompt (prompt.txt)</summary>
+            <pre class="prompt" id="prompt-text"></pre>
+          </details>
+          <details style="margin-top:12px;">
+            <summary>Search prompt (search_prompt.txt)</summary>
+            <pre class="prompt" id="prompt-search"></pre>
+          </details>
+          <details style="margin-top:12px;">
+            <summary>Generation response</summary>
+            <pre class="prompt" id="prompt-gen-response"></pre>
+          </details>
+          <details style="margin-top:12px;">
+            <summary>Search response</summary>
+            <pre class="prompt" id="prompt-search-response"></pre>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GRAPH TAB -->
+  <section id="tab-graph" class="tab-panel">
+    <div class="panel">
+      <h2>Per-run F1 (success vs failure)</h2>
+      <div class="row" style="margin-bottom:12px;">
+        <label>
+          Session
+          <select id="graph-session-select"></select>
+        </label>
+        <button id="graph-refresh-btn" class="ghost">Refresh</button>
+      </div>
+      <div id="graph-summary" style="font-size:12px; color: var(--muted); margin-bottom: 12px;"></div>
+      <div style="position:relative; height: 420px;">
+        <canvas id="run-chart"></canvas>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+const tabs = ["run", "prompts", "graph"];
+tabs.forEach(t => {
+  document.getElementById(`tab-${t}-btn`).addEventListener("click", () => switchTab(t));
+});
+function switchTab(name) {
+  tabs.forEach(t => {
+    document.getElementById(`tab-${t}-btn`).classList.toggle("active", t === name);
+    document.getElementById(`tab-${t}`).classList.toggle("active", t === name);
+  });
+  if (name === "prompts" || name === "graph") refreshSessions();
+}
+
+let logOffset = 0;
+let logPathSeen = null;
+let pollTimer = null;
+
+async function jget(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url}: ${r.status}`);
+  return r.json();
+}
+async function jpost(url, body) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body || {}),
+  });
+  return r.json();
+}
+
+document.getElementById("launch-btn").addEventListener("click", async () => {
+  const body = {
+    family: document.getElementById("family-input").value || null,
+    minutes: parseInt(document.getElementById("minutes-input").value || "80", 10),
+    no_winner_optimization: document.getElementById("no-winner-input").checked,
+    fresh: document.getElementById("fresh-input").checked,
+    max_runs: document.getElementById("max-runs-input").value || null,
+  };
+  const res = await jpost("/api/launch", body);
+  if (res.error) { alert(res.error); return; }
+  logOffset = 0;
+  logPathSeen = res.log_path;
+  document.getElementById("log-output").textContent = "";
+  document.getElementById("run-meta").textContent = "Command: " + (res.command || []).join(" ");
+  startPolling();
+});
+
+document.getElementById("stop-btn").addEventListener("click", async () => {
+  if (!confirm("Stop the running agent?")) return;
+  const res = await jpost("/api/stop", {});
+  if (res.error) alert(res.error);
+});
+
+document.getElementById("refresh-btn").addEventListener("click", () => { logOffset = 0; pollOnce(); });
+
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(pollOnce, 1500);
+}
+
+async function pollOnce() {
+  let st;
+  try { st = await jget("/api/status"); } catch (e) { return; }
+  const dot = document.getElementById("status-dot");
+  const txt = document.getElementById("status-text");
+  document.getElementById("launch-btn").disabled = st.running;
+  document.getElementById("stop-btn").disabled = !st.running;
+  if (st.running) {
+    dot.className = "dot running";
+    txt.textContent = "running";
+  } else if (st.exit_code === 0) {
+    dot.className = "dot idle";
+    txt.textContent = "finished (exit 0)";
+  } else if (st.exit_code !== null && st.exit_code !== undefined) {
+    dot.className = "dot error";
+    txt.textContent = `finished (exit ${st.exit_code})`;
+  } else {
+    dot.className = "dot idle";
+    txt.textContent = "idle";
+  }
+  if (st.log_path && st.log_path !== logPathSeen) {
+    logPathSeen = st.log_path;
+    logOffset = 0;
+    document.getElementById("log-output").textContent = "";
+  }
+  try {
+    const lg = await jget(`/api/log?offset=${logOffset}`);
+    if (lg.text) {
+      const out = document.getElementById("log-output");
+      const wasAtBottom = out.scrollTop + out.clientHeight >= out.scrollHeight - 30;
+      out.textContent += lg.text;
+      if (wasAtBottom) out.scrollTop = out.scrollHeight;
+    }
+    logOffset = lg.offset;
+  } catch (e) { /* ignore */ }
+  if (!st.running && pollTimer && st.exit_code !== null) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+pollOnce();
+startPolling();
+
+let cachedSessions = [];
+
+async function refreshSessions() {
+  try { cachedSessions = await jget("/api/sessions"); } catch (e) { return; }
+  for (const id of ["prompts-session-select", "graph-session-select"]) {
+    const sel = document.getElementById(id);
+    const prev = sel.value;
+    sel.innerHTML = "";
+    if (cachedSessions.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = ""; opt.textContent = "(no sessions yet)";
+      sel.appendChild(opt);
+    }
+    cachedSessions.forEach(s => {
+      const opt = document.createElement("option");
+      opt.value = s.name;
+      const f1 = (s.best_metrics && s.best_metrics.f1 !== undefined) ? ` f1=${Number(s.best_metrics.f1).toFixed(4)}` : "";
+      opt.textContent = `${s.name} [${s.family || "?"} / ${s.phase || "?"}]${f1}`;
+      sel.appendChild(opt);
+    });
+    if (prev) sel.value = prev;
+  }
+  if (cachedSessions.length && document.getElementById("tab-prompts").classList.contains("active")) {
+    loadPromptsForSession(document.getElementById("prompts-session-select").value);
+  }
+  if (cachedSessions.length && document.getElementById("tab-graph").classList.contains("active")) {
+    loadGraphForSession(document.getElementById("graph-session-select").value);
+  }
+}
+
+document.getElementById("prompts-session-select").addEventListener("change", e => loadPromptsForSession(e.target.value));
+document.getElementById("graph-session-select").addEventListener("change", e => loadGraphForSession(e.target.value));
+document.getElementById("graph-refresh-btn").addEventListener("click", () => loadGraphForSession(document.getElementById("graph-session-select").value));
+
+let promptsSessionData = null;
+
+async function loadPromptsForSession(name) {
+  if (!name) return;
+  const data = await jget(`/api/sessions/${encodeURIComponent(name)}`);
+  promptsSessionData = data;
+  const list = document.getElementById("prompts-run-list");
+  list.innerHTML = "";
+  if (!data.runs.length) {
+    list.innerHTML = '<div class="item">(no runs)</div>';
+    document.getElementById("prompts-run-meta").innerHTML = "";
+    document.getElementById("prompt-text").textContent = "";
+    document.getElementById("prompt-search").textContent = "";
+    document.getElementById("prompt-spec").textContent = "";
+    document.getElementById("prompt-gen-response").textContent = "";
+    document.getElementById("prompt-search-response").textContent = "";
+    return;
+  }
+  data.runs.forEach((r, idx) => {
+    const div = document.createElement("div");
+    div.className = "item" + (idx === 0 ? " selected" : "");
+    const f1 = (r.metrics && r.metrics.f1 !== undefined) ? Number(r.metrics.f1).toFixed(4) : "—";
+    const badgeClass = r.success ? "ok" : (r.timed_out ? "warn" : "bad");
+    const badgeText = r.success ? "ok" : (r.timed_out ? "timeout" : "fail");
+    div.innerHTML = `<div><strong>${r.run}</strong> <span class="badge ${badgeClass}">${badgeText}</span></div>
+                     <div class="meta">f1=${f1}</div>`;
+    div.addEventListener("click", () => {
+      document.querySelectorAll("#prompts-run-list .item").forEach(el => el.classList.remove("selected"));
+      div.classList.add("selected");
+      showRun(r);
+    });
+    list.appendChild(div);
+  });
+  showRun(data.runs[0]);
+}
+
+function showRun(r) {
+  const meta = document.getElementById("prompts-run-meta");
+  const m = r.metrics || {};
+  const kv = [
+    ["run", r.run],
+    ["success", String(r.success)],
+    ["timed_out", String(r.timed_out)],
+    ["f1", m.f1 !== undefined ? Number(m.f1).toFixed(6) : "—"],
+    ["accuracy", m.accuracy !== undefined ? Number(m.accuracy).toFixed(6) : "—"],
+    ["precision", m.precision !== undefined ? Number(m.precision).toFixed(6) : "—"],
+    ["recall", m.recall !== undefined ? Number(m.recall).toFixed(6) : "—"],
+  ];
+  meta.innerHTML = `<div class="kv">${kv.map(([k,v]) => `<div class="k">${k}</div><div class="v">${escapeHtml(String(v))}</div>`).join("")}</div>`;
+  document.getElementById("prompt-text").textContent = r.prompt || "(no prompt.txt)";
+  document.getElementById("prompt-search").textContent = r.search_prompt || "(no search_prompt.txt)";
+  document.getElementById("prompt-spec").textContent = JSON.stringify(r.spec || {}, null, 2);
+  document.getElementById("prompt-gen-response").textContent = r.generation_response || "(no generation_response.txt)";
+  document.getElementById("prompt-search-response").textContent = r.search_response || "(no search_response.txt)";
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+let runChart = null;
+
+async function loadGraphForSession(name) {
+  if (!name) return;
+  const data = await jget(`/api/sessions/${encodeURIComponent(name)}`);
+  const labels = data.runs.map(r => r.run);
+  const f1s = data.runs.map(r => (r.metrics && r.metrics.f1 !== undefined) ? Number(r.metrics.f1) : 0);
+  const colors = data.runs.map(r => r.success ? "rgba(46, 204, 113, 0.85)" : (r.timed_out ? "rgba(244, 183, 64, 0.85)" : "rgba(255, 93, 108, 0.85)"));
+  const borders = data.runs.map(r => r.success ? "#2ecc71" : (r.timed_out ? "#f4b740" : "#ff5d6c"));
+
+  const total = data.runs.length;
+  const ok = data.runs.filter(r => r.success).length;
+  const bestF1 = f1s.length ? Math.max(...f1s) : 0;
+  document.getElementById("graph-summary").innerHTML =
+    `<strong>${data.summary.family || "?"}</strong> · phase=${data.summary.phase || "?"} · runs ${ok}/${total} successful · best f1 ${bestF1.toFixed(4)}`;
+
+  const ctx = document.getElementById("run-chart").getContext("2d");
+  if (runChart) runChart.destroy();
+  runChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "F1",
+        data: f1s,
+        backgroundColor: colors,
+        borderColor: borders,
+        borderWidth: 1.5,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            afterLabel: (ctx) => {
+              const r = data.runs[ctx.dataIndex];
+              const status = r.success ? "success" : (r.timed_out ? "timed out" : "failed");
+              const m = r.metrics || {};
+              return [
+                `status: ${status}`,
+                `accuracy: ${m.accuracy !== undefined ? Number(m.accuracy).toFixed(4) : "—"}`,
+                `precision: ${m.precision !== undefined ? Number(m.precision).toFixed(4) : "—"}`,
+                `recall: ${m.recall !== undefined ? Number(m.recall).toFixed(4) : "—"}`,
+              ];
+            },
+          },
+        },
+      },
+      scales: {
+        y: { min: 0, max: 1, ticks: { color: "#8a92a6" }, grid: { color: "#2a3040" } },
+        x: { ticks: { color: "#8a92a6" }, grid: { color: "#2a3040" } },
+      },
+    },
+  });
+}
+
+refreshSessions();
+</script>
+
+</body>
+</html>

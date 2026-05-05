@@ -44,7 +44,8 @@ MAX_SEARCH_RUNS = int(os.environ.get("AGENT3_MAX_RUNS", "4"))
 MAX_REPAIR_ATTEMPTS = int(os.environ.get("DISASTER_AGENT_MAX_REPAIRS", "8"))
 TOTAL_TIME_BUDGET_SECONDS = int(os.environ.get("AGENT3_TOTAL_TIME_BUDGET_SECONDS", str(80 * 60)))
 SWEEP_BUDGET_FRACTION = float(os.environ.get("AGENT3_SWEEP_BUDGET_FRACTION", "0.65"))
-SWEEP_SAMPLE_ROWS = int(os.environ.get("AGENT3_SWEEP_SAMPLE_ROWS", "4000"))
+SWEEP_SAMPLE_ROWS = int(os.environ.get("AGENT3_SWEEP_SAMPLE_ROWS", "2000"))
+OPTIMIZE_SAMPLE_ROWS = int(os.environ.get("AGENT3_OPTIMIZE_SAMPLE_ROWS", "2000"))
 FINAL_TRAIN_ROWS = int(os.environ.get("AGENT3_FINAL_TRAIN_ROWS", "10000"))
 VALIDATION_FRACTION = min(max(float(os.environ.get("AGENT3_VALIDATION_FRACTION", "0.2")), 0.05), 0.5)
 TOP_ARCHITECTURES_TO_OPTIMIZE = int(os.environ.get("AGENT3_TOP_ARCHITECTURES_TO_OPTIMIZE", "2"))
@@ -256,6 +257,8 @@ def constrain_phase_spec(spec: dict[str, Any]) -> dict[str, Any]:
 def phase_train_rows(phase_label: str) -> int | None:
     if phase_label == "sweep":
         return SWEEP_SAMPLE_ROWS
+    if phase_label == "opt":
+        return OPTIMIZE_SAMPLE_ROWS
     return None
 
 
@@ -891,7 +894,22 @@ def main(
     else:
         overall_summary["final_submission_result"] = {"success": False, "error": final_error}
 
-    if final_submission_success and os.path.exists(public_best_submission):
+    submission_exists = os.path.exists(public_best_submission)
+    overall_summary["final_submission_result"]["submission_path"] = public_best_submission
+    overall_summary["final_submission_result"]["submission_file_exists"] = submission_exists
+    if final_submission_success and submission_exists:
+        try:
+            submission_rows = max(0, sum(1 for _ in open(public_best_submission, "r", encoding="utf-8")) - 1)
+        except OSError:
+            submission_rows = -1
+        overall_summary["final_submission_result"]["submission_rows"] = submission_rows
+        print(f"[Final Submission] Submission file written: {public_best_submission} ({submission_rows} rows).")
+    elif final_submission_success and not submission_exists:
+        print(f"[Final Submission] WARNING: run reported success but submission file was NOT created at {public_best_submission}.")
+    elif not final_submission_success:
+        print(f"[Final Submission] Submission file NOT created (final run did not succeed). Expected: {public_best_submission}")
+
+    if final_submission_success and submission_exists:
         overall_summary["best_submission_path"] = public_best_submission
         if auto_submit_enabled():
             print("[Kaggle] Uploading final submission and polling for score...")

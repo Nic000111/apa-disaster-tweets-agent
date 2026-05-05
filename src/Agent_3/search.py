@@ -398,13 +398,13 @@ def propose_next_spec(
         stale_changed_keys = _changed_tunable_keys(module, repeated_match["spec"], latest_success["spec"])
     phase_rules = (
         "- this is the top-architecture optimization phase, so stay near this architecture's current best spec\n"
-        "- usually change 2 to 4 tunable keys because the sweep used the smaller 4k labeled sample\n"
+        "- usually change 2 to 4 tunable keys because the sweep used the smaller 2k labeled sample\n"
         "- prefer coordinated local changes such as learning_rate, dropout, batch_size, epochs, weight_decay, sequence length, and threshold settings\n"
         "- validation size is controlled by the runner and should remain at 0.2\n"
         "- avoid large capacity jumps unless the history strongly suggests they help\n"
     ) if phase == "opt" else (
         "- this is the family sweep phase, so explore different regions of the parameter space\n"
-        "- the runner uses a 4k labeled sample split 80/20 for training/validation\n"
+        "- the runner uses a 2k labeled sample split 80/20 for training/validation\n"
         "- usually change 2 to 4 tunable keys in one coordinated move\n"
         "- with a 5-run budget, cover both model-capacity keys and optimization keys instead of nudging only one key repeatedly\n"
         "- prefer combinations such as sequence/model size + regularization + optimization, for example max_len/channels with learning_rate/dropout/batch_size/epochs\n"
