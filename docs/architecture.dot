@@ -1,0 +1,136 @@
+// Agent_3 architecture diagram
+// Render: dot -Tpng docs/architecture.dot -o docs/architecture.png
+
+digraph Agent3 {
+  rankdir=TB;
+  compound=true;
+  graph [
+    fontname="Helvetica",
+    labelloc=t,
+    fontsize=24,
+    label="Agent_3 — Two-Model Autonomous Experiment Loop",
+    bgcolor="white",
+    pad=0.5,
+    nodesep=0.55,
+    ranksep=0.7
+  ];
+  node [fontname="Helvetica", shape=box, style="rounded,filled", fillcolor="#F4F4F4", color="#888", fontsize=14];
+  edge [fontname="Helvetica", color="#555", fontsize=12];
+
+  // ───────────── ENTRY ──────────────
+  start [label="python src/Agent_3/agent.py", shape=oval, fillcolor="#E8F4FD"];
+
+  // ───────────── TOP-LEVEL PHASES ──
+  sweep [label="SWEEP phase\nwalk all 8 families\n4k labeled rows · 80/20 split", fillcolor="#E8F4FD"];
+  optimize [label="OPTIMIZE phase\ntop-K (=2) architectures\n10k labeled rows · 80/20 split\nseeded from best sweep run", fillcolor="#E8F4FD"];
+  final [label="FINAL retrain\nbest model on full labeled set\npredict unlabeled test.csv", fillcolor="#E8F4FD"];
+
+  // ───────────── PER-FAMILY LOOP ──
+  subgraph cluster_family {
+    label = "Per-family loop  (execute_family)";
+    fontsize=16;
+    style="dashed,rounded";
+    color="#1a8a55";
+    bgcolor="#F5FFF8";
+    margin=14;
+
+    spec    [label="1. spec generation\nJSON, validated & clamped", fillcolor="#E5F8EE"];
+    code    [label="2. code generation\nfull training script\n(or reuse frozen baseline)", fillcolor="#E5F8EE"];
+    sandbox [label="3. sandbox\ndry-run + full run", fillcolor="#E5F8EE"];
+    repair  [label="4. surgical repair\nup to 8 attempts", fillcolor="#FFEAEA"];
+    analyze [label="5. analyze + log\nappend to trial history", fillcolor="#E5F8EE"];
+    decision [label="continue?\nF1 ≥ AGENT3_F1_TARGET → stop\nplateau N runs → stop\nbudget exhausted → stop\nfreeze rule (success+1) → next family",
+              shape=diamond, fillcolor="#FFF1C2"];
+  }
+
+  // ───────────── LLM ROUTER (side panel) ──
+  subgraph cluster_llm {
+    label = "LLM Router  (llm.py)";
+    fontsize=16;
+    style="filled,rounded";
+    fillcolor="#FAF6FF";
+    color="#6a3d9a";
+    margin=14;
+
+    orchestrator [
+      label=<<B>ORCHESTRATOR</B><BR/>gemma3:4b<BR/><BR/><FONT POINT-SIZE="12">used for:<BR/>• step 1 (spec)<BR/>• step 5 (analyze)<BR/>• search.propose_next_spec</FONT>>,
+      fillcolor="#D1B3FF"
+    ];
+    coder [
+      label=<<B>CODE</B><BR/>qwen2.5-coder:14b<BR/><BR/><FONT POINT-SIZE="12">used for:<BR/>• step 2 (generate)<BR/>• step 4 (surgical repair)</FONT>>,
+      fillcolor="#A1CFFF"
+    ];
+  }
+
+  // ───────────── MEMORY (side panel) ──
+  subgraph cluster_memory {
+    label = "Memory";
+    fontsize=16;
+    style="filled,rounded";
+    fillcolor="#0E3B2E";
+    fontcolor="#FFFFFF";
+    color="#0E3B2E";
+    margin=14;
+    node [fontcolor="#FFFFFF", color="#1F6F4A"];
+
+    mem_tier1 [
+      label=<<B>Tier 1</B><BR/>Static project brief<BR/><FONT POINT-SIZE="10">prompts.FULL_SYSTEM<BR/>+ DATA_CONTEXT_TEMPLATE</FONT>>,
+      fillcolor="#1F6F4A"
+    ];
+    mem_tier2 [
+      label=<<B>Tier 2</B><BR/>Rolling log · last 20<BR/><FONT POINT-SIZE="10">memory.history_summary()<BR/>ROLLING_WINDOW = 20</FONT>>,
+      fillcolor="#1F6F4A"
+    ];
+    mem_milestone [
+      label=<<B>Milestone</B><BR/>Best F1 ever<BR/><FONT POINT-SIZE="10">memory.best_for_family()<BR/>seeds OPTIMIZE phase</FONT>>,
+      fillcolor="#1F6F4A"
+    ];
+    mem_queue [
+      label=<<B>Arch queue</B><BR/><FONT POINT-SIZE="10">FAMILY_MODULES order:<BR/>1 · bertweet<BR/>2 · transformer<BR/>3 · roberta<BR/>4 · bow_advanced<BR/>5 · cnn<BR/>6 · embedding_dl<BR/>7 · lstm<BR/>8 · bow</FONT>>,
+      fillcolor="#1F6F4A"
+    ];
+
+    // Keep tiers stacked vertically inside the cluster
+    mem_tier1 -> mem_tier2 -> mem_milestone -> mem_queue [style=invis];
+  }
+
+  // ───────────── OUTPUTS ──────────
+  artifacts  [label="src/Agent_3/runs/<session>/\nspec.json · prompt.txt · train.py\nmetrics.json · run.log · summary.json", shape=note, fillcolor="#FFF8E1"];
+  submission [label="submissions/best_overall_submission.csv", shape=note, fillcolor="#F1FCE3"];
+  kaggle     [label="Kaggle upload (optional)\nAGENT3_AUTO_SUBMIT_KAGGLE=1", shape=note, fillcolor="#F1FCE3"];
+
+  // ───────────── EDGES: main flow ──
+  start -> sweep;
+  sweep -> spec [lhead=cluster_family, label="enter family"];
+  spec -> code;
+  code -> sandbox;
+  sandbox -> repair [label="failure", color="#a33"];
+  repair -> sandbox [label="patched", color="#a33", style=dashed];
+  sandbox -> analyze [label="success or\nfinal failure"];
+  analyze -> decision;
+  decision -> spec [label="next run", style=dashed];
+  decision -> sweep [ltail=cluster_family, label="exit family"];
+
+  sweep -> optimize [label="all families done\nor target hit"];
+  optimize -> final;
+  final -> submission;
+  submission -> kaggle [style=dashed];
+
+  // artifacts (dotted, decorative)
+  sandbox -> artifacts [style=dotted, color="#888", arrowhead=none];
+  analyze -> artifacts [style=dotted, color="#888", arrowhead=none];
+
+  // keep router cluster off the critical path
+  start -> orchestrator [style=invis];
+  orchestrator -> coder [style=invis];
+
+  // memory feeds prompts; analyze writes back to the rolling log
+  mem_tier1 -> spec     [style=dotted, color="#1F6F4A", constraint=false, label="static brief"];
+  mem_tier2 -> spec     [style=dotted, color="#1F6F4A", constraint=false, label="recent runs"];
+  mem_milestone -> optimize [style=dotted, color="#1F6F4A", constraint=false, label="seed best"];
+  mem_queue -> sweep    [style=dotted, color="#1F6F4A", constraint=false, label="family order"];
+  analyze -> mem_tier2  [style=dotted, color="#1F6F4A", constraint=false, label="add_run()"];
+
+  // keep memory cluster anchored near the router
+  coder -> mem_tier1 [style=invis];
+}

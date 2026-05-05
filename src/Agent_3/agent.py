@@ -20,7 +20,7 @@ from artifacts import copy_if_exists, create_session_dir, create_run_dir, write_
 from generate_spec import generate_initial_spec
 from json_utils import pretty_json
 from kaggle_submit import auto_submit_enabled, submit_and_wait
-from llm import OllamaClient
+from llm import DEFAULT_MODEL, DEFAULT_ORCHESTRATOR_MODEL, LLMRouter, OllamaClient
 from memory import Agent3Memory
 from prompts import ANALYSIS_PROMPT_TEMPLATE, DATA_CONTEXT_TEMPLATE, FULL_SYSTEM
 from render_templates import render_family_prompt
@@ -50,6 +50,9 @@ VALIDATION_FRACTION = min(max(float(os.environ.get("AGENT3_VALIDATION_FRACTION",
 TOP_ARCHITECTURES_TO_OPTIMIZE = int(os.environ.get("AGENT3_TOP_ARCHITECTURES_TO_OPTIMIZE", "2"))
 WINNER_OPTIMIZATION_MAX_RUNS = int(os.environ.get("AGENT3_WINNER_OPTIMIZATION_MAX_RUNS", "20"))
 RUN_START_BUFFER_SECONDS = int(os.environ.get("AGENT3_RUN_START_BUFFER_SECONDS", "120"))
+F1_TARGET = float(os.environ.get("AGENT3_F1_TARGET", "0.88"))
+PLATEAU_PATIENCE = int(os.environ.get("AGENT3_PLATEAU_PATIENCE", "3"))
+PLATEAU_MIN_IMPROVEMENT = float(os.environ.get("AGENT3_PLATEAU_MIN_IMPROVEMENT", "0.001"))
 # Measured one-run wall times on 2026-04-20, plus an extra ~120s cushion
 # for up to five repair attempts at roughly 24s each.
 FAMILY_RUN_ESTIMATES = {
@@ -113,7 +116,7 @@ def syntax_check(code: str) -> tuple[bool, str]:
 
 
 def analyze_run(
-    llm: OllamaClient,
+    llm: "OllamaClient",
     family: str,
     run_label: str,
     spec: dict[str, Any],
@@ -311,7 +314,7 @@ def cleanup_phase_data_dirs(paths: list[str]) -> None:
 
 
 def execute_family(
-    llm: OllamaClient,
+    llms: LLMRouter,
     memory: Agent3Memory,
     family_key: str,
     max_runs: int | None,
@@ -335,6 +338,9 @@ def execute_family(
     best_code: str | None = seeded_code
     frozen_code: str | None = seeded_code
     first_sweep_success_run: int | None = None
+    best_f1_in_phase: float = -1.0
+    runs_since_improvement: int = 0
+    target_or_plateau_hit: bool = False
     freeze_after_success = bool(getattr(module, "freeze_after_first_success", lambda: False)())
     if seeded_trial:
         seed_record = dict(seeded_trial)
@@ -343,6 +349,7 @@ def execute_family(
         seed_record["seeded"] = True
         trials.append(seed_record)
         best_trial = seed_record
+        best_f1_in_phase = metric_f1({"metrics": seed_record.get("metrics", {})})
         if frozen_code:
             print(
                 f"[Seed] {family} optimization seeded from prior best run "
@@ -366,7 +373,7 @@ def execute_family(
 
         if run_index == 1 and seeded_trial is None:
             spec_bundle = generate_initial_spec(
-                llm=llm,
+                llm=llms.orchestrator,
                 module=module,
                 run_name=run_name,
                 submission_path=submission_path,
@@ -376,7 +383,7 @@ def execute_family(
             spec_stage_name = "spec"
         else:
             spec_bundle = propose_next_spec(
-                llm=llm,
+                llm=llms.orchestrator,
                 module=module,
                 run_name=run_name,
                 submission_path=submission_path,
@@ -410,7 +417,7 @@ def execute_family(
             run_code = module.tune_frozen_code(frozen_code, spec, run_name)
             write_text(os.path.join(run_dir, "generation_response.txt"), response)
         else:
-            response, code = llm.propose(FULL_SYSTEM, prompt)
+            response, code = llms.code.propose(FULL_SYSTEM, prompt)
             write_text(os.path.join(run_dir, "generation_response.txt"), response)
             if not code:
                 result = {
@@ -421,7 +428,7 @@ def execute_family(
                     "stdout": "",
                     "stderr": "LLM returned no code block.",
                 }
-                analysis = analyze_run(llm, family, run_name, spec, result)
+                analysis = analyze_run(llms.orchestrator, family, run_name, spec, result)
                 write_text(os.path.join(run_dir, "run.log"), result["stderr"])
                 write_json(os.path.join(run_dir, "metrics.json"), {"success": False, "metrics": {}})
                 memory.add_run(family, run_name, run_index, spec, prompt, "", result, analysis)
@@ -445,7 +452,7 @@ def execute_family(
                     }
                     break
                 repair = request_surgical_repair(
-                    llm=llm,
+                    llm=llms.code,
                     module=module,
                     family=family,
                     run_name=run_name,
@@ -485,7 +492,7 @@ def execute_family(
                     }
                     break
                 repair = request_surgical_repair(
-                    llm=llm,
+                    llm=llms.code,
                     module=module,
                     family=family,
                     run_name=run_name,
@@ -528,7 +535,7 @@ def execute_family(
                 break
 
             repair = request_surgical_repair(
-                llm=llm,
+                llm=llms.code,
                 module=module,
                 family=family,
                 run_name=run_name,
@@ -557,7 +564,7 @@ def execute_family(
                 "stderr": "Execution failed without a result payload.",
             }
 
-        analysis = analyze_run(llm, family, run_name, spec, result)
+        analysis = analyze_run(llms.orchestrator, family, run_name, spec, result)
         write_text(os.path.join(run_dir, "train.py"), run_code)
         write_json(
             os.path.join(run_dir, "metrics.json"),
@@ -611,6 +618,28 @@ def execute_family(
                     frozen_code = best_code
                     print(f"[Freeze] {family} baseline refreshed from current best successful run.")
         print(f"[Result] run {run_index}/{resolved_max_runs} | success={result.get('success', False)} | metrics={result.get('metrics', {})}")
+        if result.get("success"):
+            current_f1 = metric_f1(result)
+            if current_f1 > best_f1_in_phase + PLATEAU_MIN_IMPROVEMENT:
+                best_f1_in_phase = current_f1
+                runs_since_improvement = 0
+            else:
+                runs_since_improvement += 1
+            if current_f1 >= F1_TARGET:
+                print(
+                    f"[F1 Target] {family} run {run_index} hit f1={current_f1:.4f} "
+                    f">= target {F1_TARGET:.4f}; ending {phase_label} phase early."
+                )
+                target_or_plateau_hit = True
+                break
+            if runs_since_improvement >= PLATEAU_PATIENCE:
+                print(
+                    f"[Plateau] {family} {phase_label} phase: no improvement "
+                    f"(>{PLATEAU_MIN_IMPROVEMENT}) for {PLATEAU_PATIENCE} successful runs; "
+                    "ending phase early."
+                )
+                target_or_plateau_hit = True
+                break
         if phase_label == "sweep" and result.get("success"):
             if first_sweep_success_run is None:
                 first_sweep_success_run = run_index
@@ -634,6 +663,7 @@ def execute_family(
         "best_run_index": best_trial["run_index"] if best_trial else None,
         "best_metrics": best_trial["metrics"] if best_trial else {},
         "best_run_dir": best_trial["run_dir"] if best_trial else None,
+        "early_exit": target_or_plateau_hit,
         "trials": trials,
     }
     write_json(os.path.join(session_dir, "summary.json"), summary)
@@ -648,6 +678,7 @@ def execute_family(
 
 def main(
     model: str,
+    orchestrator_model: str | None,
     family: str | None,
     max_runs: int | None,
     persist: bool,
@@ -655,13 +686,25 @@ def main(
     optimize_winner: bool,
 ) -> None:
     try:
-        llm = OllamaClient(model=model)
+        code_llm = OllamaClient(model=model)
     except Exception as exc:  # noqa: BLE001
         raise SystemExit(
             "Agent_3 could not connect to Ollama. "
             "Start Ollama and ensure the requested model is available.\n"
             f"Details: {exc}"
         ) from exc
+    if orchestrator_model and orchestrator_model != model:
+        try:
+            orchestrator_llm = OllamaClient(model=orchestrator_model)
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"[LLM] WARNING: orchestrator model '{orchestrator_model}' could not be initialized: {exc}\n"
+                f"      Falling back to code model '{model}' for orchestration."
+            )
+            orchestrator_llm = code_llm
+    else:
+        orchestrator_llm = code_llm
+    llms = LLMRouter(code=code_llm, orchestrator=orchestrator_llm)
     memory = Agent3Memory(persist=persist, load_existing=False)
     public_submissions_dir = reset_public_submissions_dir()
     phase_data_dirs: list[str] = []
@@ -693,7 +736,7 @@ def main(
             continue
         family_summaries.append(
             execute_family(
-                llm,
+                llms,
                 memory,
                 family_key,
                 max_runs=max_runs,
@@ -703,6 +746,16 @@ def main(
                 phase_split_manifest=sweep_split_manifest,
             )
         )
+        best_so_far = max(
+            (metric_f1({"metrics": s.get("best_metrics", {})}) for s in family_summaries if s.get("best_run_index") is not None),
+            default=-1.0,
+        )
+        if best_so_far >= F1_TARGET:
+            print(
+                f"[F1 Target] Sweep best f1={best_so_far:.4f} >= target {F1_TARGET:.4f}; "
+                "skipping remaining sweep families."
+            )
+            break
 
     successful = [summary for summary in family_summaries if summary.get("best_run_index") is not None]
     if not successful:
@@ -716,7 +769,15 @@ def main(
         reverse=True,
     )
     sweep_best = sweep_ranked[0]
+    sweep_best_f1 = metric_f1({"metrics": sweep_best.get("best_metrics", {})})
     top_sweep_summaries = sweep_ranked[:max(1, TOP_ARCHITECTURES_TO_OPTIMIZE)]
+
+    if optimize_winner and sweep_best_f1 >= F1_TARGET:
+        print(
+            f"[F1 Target] Sweep best f1={sweep_best_f1:.4f} already >= target {F1_TARGET:.4f}; "
+            "skipping winner optimization."
+        )
+        optimize_winner = False
 
     if optimize_winner:
         opt_data_dir, opt_split_manifest = create_fixed_phase_data_dir(
@@ -757,7 +818,7 @@ def main(
                 )
                 family_summaries.append(
                     execute_family(
-                        llm,
+                        llms,
                         memory,
                         selected["family_key"],
                         max_runs=WINNER_OPTIMIZATION_MAX_RUNS,
@@ -778,6 +839,8 @@ def main(
     )
     overall_summary = {
         "model": model,
+        "code_model": code_llm.model,
+        "orchestrator_model": orchestrator_llm.model,
         "time_budget_seconds": time_budget_seconds,
         "time_elapsed_seconds": int(time.time() - started_at),
         "families_run": families,
@@ -857,7 +920,21 @@ def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Agent_3 prompt-first autonomous experiment runner")
-    parser.add_argument("--model", type=str, default="qwen2.5-coder:14b")
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=os.environ.get("AGENT3_CODE_MODEL", DEFAULT_MODEL),
+        help="Heavy code model for code generation and surgical repair.",
+    )
+    parser.add_argument(
+        "--orchestrator-model",
+        type=str,
+        default=os.environ.get("AGENT3_ORCHESTRATOR_MODEL", DEFAULT_ORCHESTRATOR_MODEL),
+        help=(
+            "Cheaper model for JSON spec planning, search proposals, and run analysis. "
+            "Pass the same value as --model (or empty string) to disable role splitting."
+        ),
+    )
     parser.add_argument("--family", type=str, choices=sorted(FAMILY_MODULES.keys()))
     parser.add_argument("--max-runs", type=int)
     parser.add_argument("--time-budget-minutes", type=int, default=80)
@@ -866,6 +943,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     main(
         model=args.model,
+        orchestrator_model=args.orchestrator_model or None,
         family=args.family,
         max_runs=args.max_runs,
         persist=not args.fresh,

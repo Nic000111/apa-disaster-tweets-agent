@@ -13,7 +13,8 @@ import requests
 
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 DEFAULT_MODEL = "qwen2.5-coder:14b"
-TIMEOUT = int(os.environ.get("DISASTER_AGENT_LLM_TIMEOUT", "1000"))
+DEFAULT_ORCHESTRATOR_MODEL = "gemma3:4b"
+TIMEOUT = int(os.environ.get("DISASTER_AGENT_LLM_TIMEOUT", "10000"))
 
 
 class OllamaClient:
@@ -28,10 +29,14 @@ class OllamaClient:
             models = [m["name"] for m in response.json().get("models", [])]
             if not models:
                 print("[LLM] WARNING: Ollama is running but no models are pulled.")
-            else:
-                print(f"[LLM] Connected to Ollama. Available models: {models}")
-                if self.model not in models and not any(self.model in m for m in models):
-                    print(f"[LLM] WARNING: model '{self.model}' not found. Available: {models}")
+                return
+            print(f"[LLM] Connected to Ollama. Available models: {models}")
+            if self.model not in models and not any(self.model in m for m in models):
+                # Raise so callers (e.g. orchestrator setup in agent.main) can
+                # fall back to a different model instead of failing every request.
+                raise RuntimeError(
+                    f"model '{self.model}' not found in Ollama. Available: {models}"
+                )
         except requests.exceptions.ConnectionError:
             print("[LLM] ERROR: Cannot connect to Ollama at localhost:11434")
             raise
@@ -87,3 +92,22 @@ def extract_code_block(text: str) -> str:
         return match.group(1).strip()
     match = re.search(r"```\s*(.*?)```", text, re.DOTALL)
     return match.group(1).strip() if match else ""
+
+
+class LLMRouter:
+    """Route calls to a heavy code model or a cheaper orchestrator model.
+
+    Code model: full code generation, surgical repair.
+    Orchestrator model: JSON spec planning, search proposals, run analysis.
+    """
+
+    def __init__(self, code: OllamaClient, orchestrator: OllamaClient | None = None):
+        self.code = code
+        self.orchestrator = orchestrator if orchestrator is not None else code
+        if self.orchestrator is self.code:
+            print(f"[LLM] Single-model mode | model={self.code.model}")
+        else:
+            print(
+                f"[LLM] Router active | code={self.code.model} | "
+                f"orchestrator={self.orchestrator.model}"
+            )
