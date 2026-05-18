@@ -70,7 +70,8 @@ SWEEP_PLANNER_SYSTEM = (
     "OUTPUT one JSON object on a single line:\n"
     '  {"action":"try_family","family_key":"<key>","reason":"<text>"}\n'
     "\n"
-    "Hard rails: never call 'stop'; pick only from the ELIGIBLE list."
+    "Always pick a family from the ELIGIBLE list. The sweep ends on the "
+    "wall-clock deadline, not by your decision."
 )
 
 DATA_CONTEXT_TEMPLATE = """DATASET CONTEXT:
