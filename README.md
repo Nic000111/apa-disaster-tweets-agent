@@ -22,7 +22,7 @@ Useful variants:
 
 The Kaggle competition [`nlp-getting-started`](https://www.kaggle.com/competitions/nlp-getting-started) asks for binary classification of tweets — disaster (label 1) vs not (label 0). Rather than solving it by hand, this project is an **autonomous research agent** that uses a local LLM (Ollama-hosted) to plan experiments, write training code, repair the code when it breaks, and interpret the results — all inside a 1-hour CPU-only budget. Every trial is recorded as `hypothesis → spec → F1 → conclusion`, and the next trial reads that history before deciding what to try next.
 
-![Agent_4 Architecture](src/Agent_4/docs/architecture_v4.png)
+![Agent_4 Architecture](src/Agent_4/docs/architecture_v4.jpeg)
 
 Full design rationale, experiment log, results, and reflections are in the project report. This README is the practical reference — what the agent is, how it works, and how to run it.
 
