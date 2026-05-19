@@ -1,16 +1,7 @@
 # APA Disaster Tweets — Autonomous LLM Research Agent
 
 > **Required before running: [Ollama](https://ollama.com/download) with the `qwen2.5-coder:14b` model.**
->
-> The agent will not run without a locally hosted LLM at `http://localhost:11434`. What `./run.sh` does and does **not** handle automatically:
->
-> | Step | Auto-handled by `run.sh`? |
-> |---|---|
-> | Install Ollama itself | ❌ **No** — you must install it first from <https://ollama.com/download> (or `brew install ollama` on macOS) |
-> | Start the Ollama server (`ollama serve`) | ❌ **No** — run it in a separate terminal before `./run.sh` |
-> | Pull the `qwen2.5-coder:14b` model (~9 GB, one-time) | ✅ Yes — pulled on first run if not already cached |
->
-> If Ollama is not installed or not running, `./run.sh` exits with a clear error pointing to the missing step. `qwen2.5-coder:14b` is the default and the only model the agent has been tested with end-to-end.
+> The agent will not run without a locally hosted LLM at `http://localhost:11434`. `./run.sh` will pull the model on first launch (~9 GB, one-time), but Ollama itself must be installed and running (`ollama serve`) first. `qwen2.5-coder:14b` is the default and the only model the agent has been tested with end-to-end.
 
 ## To run everything
 
