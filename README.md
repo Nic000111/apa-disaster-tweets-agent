@@ -12,6 +12,21 @@ The active implementation in this repository is `src/Agent_3/`. It uses a local 
 - iterate across multiple model families
 - attempt one final Kaggle-style submission rerun from the best run
 
+## Required: Ollama with Qwen 2.5 Coder 14B
+
+This agent **will not run** without a locally hosted LLM. Before doing anything else, install [Ollama](https://ollama.com/download) and pull the default model used by the agent:
+
+```bash
+# 1. Install Ollama (see https://ollama.com/download for your OS)
+# 2. Start the Ollama server
+ollama serve
+
+# 3. Pull the default code-generation model (~9 GB download)
+ollama pull qwen2.5-coder:14b
+```
+
+The agent expects the Ollama API at `http://localhost:11434` and uses `qwen2.5-coder:14b` as the default model for spec proposal, code generation, repair, and analysis. A different model can be selected with `--model`, but `qwen2.5-coder:14b` is the only model the agent has been tested with end-to-end and is strongly recommended.
+
 ## Current Entry Point
 
 Run the agent from:
